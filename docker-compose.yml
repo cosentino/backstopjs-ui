@@ -1,0 +1,26 @@
+services:
+  # Dashboard web + motore BackstopJS: http://localhost:3000
+  ui:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data
+    # Utente host (esportato da up.sh): i file generati non appartengono a root.
+    user: "${VRT_UID:-1000}:${VRT_GID:-1000}"
+    environment:
+      HOME: /tmp
+    shm_size: 1gb
+    # Per testare dev server sull'host: http://host.docker.internal:<porta>
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - demo
+
+  # Sito demo statico: http://localhost:8081 (dal container: http://demo/)
+  demo:
+    image: nginx:1.27-alpine
+    ports:
+      - "8081:80"
+    volumes:
+      - ./demo-site:/usr/share/nginx/html:ro

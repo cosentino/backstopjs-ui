@@ -1,0 +1,135 @@
+/* ============================================================
+   PER SIMULARE UNA REGRESSIONE VISIVA:
+   cambia il valore di --accent qui sotto (es. in #cc3300)
+   e rilancia ./vrt.sh test demo — oppure usa ./vrt.sh break-demo
+   ============================================================ */
+:root {
+  --accent: #0066cc;
+  --text: #1f2933;
+  --muted: #616e7c;
+  --bg: #f5f7fa;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: Georgia, 'Times New Roman', serif;
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.6;
+}
+
+.site-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: #fff;
+  border-bottom: 3px solid var(--accent);
+}
+
+.logo { font-weight: bold; font-size: 1.25rem; color: var(--accent); }
+
+.site-header nav a {
+  margin-left: 1.5rem;
+  text-decoration: none;
+  color: var(--muted);
+}
+.site-header nav a.active { color: var(--accent); font-weight: bold; }
+
+.hero {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: var(--accent);
+  color: #fff;
+}
+.hero h1 { font-size: 2.25rem; margin-bottom: 0.5rem; }
+.hero p { opacity: 0.9; }
+
+.btn {
+  display: inline-block;
+  margin-top: 1.5rem;
+  padding: 0.75rem 2rem;
+  background: #fff;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: bold;
+  border-radius: 4px;
+}
+
+/* Riquadro dinamico: contenuto casuale a ogni caricamento */
+.carousel {
+  margin: 2rem auto;
+  max-width: 720px;
+  padding: 1.5rem 2rem;
+  background: #fff;
+  border: 2px dashed var(--muted);
+  border-radius: 8px;
+  text-align: center;
+}
+/* Altezza FISSA: il contenuto è casuale e con hideSelectors l'elemento
+   nascosto occupa comunque spazio — senza altezza fissa il layout
+   sottostante si sposterebbe a ogni caricamento. */
+.carousel-slide {
+  font-size: 1.1rem;
+  font-style: italic;
+  height: 4.5em;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.carousel-meta {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  max-width: 960px;
+  margin: 2rem auto;
+  padding: 0 2rem;
+}
+@media (max-width: 767px) {
+  .cards { grid-template-columns: 1fr; }
+}
+
+.card {
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border-top: 4px solid var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.card h2 { color: var(--accent); margin-bottom: 0.5rem; font-size: 1.1rem; }
+
+.content {
+  max-width: 720px;
+  margin: 2rem auto;
+  padding: 0 2rem;
+}
+.content h1 { color: var(--accent); margin-bottom: 1rem; }
+.content h2 { margin: 1.5rem 0 0.5rem; }
+
+blockquote {
+  margin: 1.5rem 0;
+  padding: 1rem 1.5rem;
+  background: #fff;
+  border-left: 4px solid var(--accent);
+  font-style: italic;
+}
+
+.site-footer {
+  margin-top: 3rem;
+  padding: 1.5rem 2rem;
+  background: var(--text);
+  color: #fff;
+  text-align: center;
+  font-size: 0.85rem;
+}

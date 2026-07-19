@@ -1,0 +1,9 @@
+app/node_modules/
+
+# Output dei test: rigenerati a ogni run, non vanno versionati.
+data/projects/*/backstop_data/bitmaps_test/
+data/projects/*/backstop_data/html_report/
+data/projects/*/backstop_data/ci_report/
+
+# Le baseline (data/projects/*/backstop_data/bitmaps_reference/) invece
+# VANNO versionate: sono il riferimento condiviso del team.

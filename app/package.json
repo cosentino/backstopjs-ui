@@ -1,0 +1,15 @@
+{
+  "name": "backstop-ui",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Dashboard web per visual regression testing con BackstopJS",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "cheerio": "^1.0.0"
+  }
+}

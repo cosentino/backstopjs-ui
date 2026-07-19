@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chi siamo — Demo Site</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <span class="logo">DemoCorp</span>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="about.html" class="active">Chi siamo</a>
+    </nav>
+  </header>
+
+  <main class="content">
+    <h1>Chi siamo</h1>
+    <p>
+      DemoCorp è un'azienda immaginaria che esiste solo per farsi fotografare da
+      BackstopJS. Ogni pixel di questa pagina è sotto controllo, tranne il
+      riquadro qui sotto.
+    </p>
+
+    <!-- Contenuto DINAMICO, ignorato via hideSelectors -->
+    <section class="carousel">
+      <div class="carousel-slide" id="carousel-slide">…</div>
+      <div class="carousel-meta" id="carousel-meta">…</div>
+    </section>
+
+    <h2>La nostra missione</h2>
+    <p>
+      Intercettare le regressioni visive prima che arrivino in produzione:
+      un colore sbagliato, un margine saltato, un font non caricato.
+    </p>
+    <blockquote>
+      «Se cambia un pixel, vogliamo saperlo.» — Il team frontend
+    </blockquote>
+  </main>
+
+  <footer class="site-footer">
+    <p>© DemoCorp — sito di prova per BackstopJS</p>
+  </footer>
+
+  <script src="carousel.js"></script>
+</body>
+</html>

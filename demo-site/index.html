@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo Site — Visual Regression</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <span class="logo">DemoCorp</span>
+    <nav>
+      <a href="index.html" class="active">Home</a>
+      <a href="about.html">Chi siamo</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <h1>Benvenuto nel sito demo</h1>
+    <p>Questa pagina serve a provare il ciclo completo di visual regression testing.</p>
+    <a href="#" class="btn">Scopri di più</a>
+  </section>
+
+  <!-- Contenuto DINAMICO: cambia a ogni caricamento della pagina.
+       È ignorato dai test tramite hideSelectors: [".carousel"] -->
+  <section class="carousel">
+    <div class="carousel-slide" id="carousel-slide">…</div>
+    <div class="carousel-meta" id="carousel-meta">…</div>
+  </section>
+
+  <section class="cards">
+    <article class="card">
+      <h2>Stabile</h2>
+      <p>Questa card non cambia mai: se il test la segnala, c'è una vera regressione.</p>
+    </article>
+    <article class="card">
+      <h2>Responsive</h2>
+      <p>Le card si dispongono su una o tre colonne a seconda del viewport.</p>
+    </article>
+    <article class="card">
+      <h2>Testato</h2>
+      <p>Screenshot catturati a 375px, 768px e 1920px di larghezza.</p>
+    </article>
+  </section>
+
+  <footer class="site-footer">
+    <p>© DemoCorp — sito di prova per BackstopJS</p>
+  </footer>
+
+  <script src="carousel.js"></script>
+</body>
+</html>

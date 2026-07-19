@@ -1,0 +1,44 @@
+{
+  "id": "demo",
+  "viewports": [
+    { "label": "mobile", "width": 375, "height": 667 },
+    { "label": "tablet", "width": 768, "height": 1024 },
+    { "label": "desktop", "width": 1920, "height": 1080 }
+  ],
+  "onBeforeScript": "puppet/onBefore.js",
+  "onReadyScript": "puppet/onReady.js",
+  "scenarios": [
+    {
+      "label": "Home",
+      "url": "http://demo/",
+      "hideSelectors": [".carousel"],
+      "delay": 300,
+      "misMatchThreshold": 0.1,
+      "requireSameDimensions": true
+    },
+    {
+      "label": "About",
+      "url": "http://demo/about.html",
+      "hideSelectors": [".carousel"],
+      "delay": 300,
+      "misMatchThreshold": 0.1,
+      "requireSameDimensions": true
+    }
+  ],
+  "paths": {
+    "bitmaps_reference": "projects/demo/backstop_data/bitmaps_reference",
+    "bitmaps_test": "projects/demo/backstop_data/bitmaps_test",
+    "engine_scripts": "engine_scripts",
+    "html_report": "projects/demo/backstop_data/html_report",
+    "ci_report": "projects/demo/backstop_data/ci_report"
+  },
+  "report": ["browser"],
+  "engine": "puppeteer",
+  "engineOptions": {
+    "args": ["--no-sandbox"]
+  },
+  "asyncCaptureLimit": 5,
+  "asyncCompareLimit": 50,
+  "debug": false,
+  "debugWindow": false
+}

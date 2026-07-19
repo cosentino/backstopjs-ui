@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backstop UI — Visual Regression</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23101216'/><rect x='9' y='3' width='4' height='10' fill='%23d6006e'/><rect x='3' y='3' width='4' height='10' fill='%23e8eae6'/></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="wordmark" href="#/">
+      <span class="wordmark-swatch" aria-hidden="true"></span>
+      backstop<b>ui</b>
+    </a>
+    <span class="topbar-note">visual regression testing</span>
+  </header>
+
+  <div class="shell">
+    <main id="view" class="view" aria-live="polite">
+      <!-- render via app.js -->
+    </main>
+
+    <aside class="runbar">
+      <h2 class="runbar-title">Esecuzioni</h2>
+      <div id="run-current" class="run-current">
+        <p class="empty">Nessuna esecuzione in corso.</p>
+      </div>
+      <pre id="run-log" class="run-log" aria-label="Log dell'esecuzione"></pre>
+      <ol id="run-history" class="run-history"></ol>
+    </aside>
+  </div>
+
+  <dialog id="scenario-dialog" class="dialog">
+    <form method="dialog" id="scenario-form">
+      <h3 id="scenario-dialog-title">Scenario</h3>
+
+      <label>Nome (label)
+        <input name="label" required autocomplete="off">
+      </label>
+      <label>URL da fotografare
+        <input name="url" required placeholder="https://… oppure http://demo/…" autocomplete="off">
+      </label>
+
+      <div class="form-row">
+        <label>Attesa dopo il load (ms)
+          <input name="delay" type="number" min="0" step="100" value="300">
+        </label>
+        <label>Soglia differenze (%)
+          <input name="misMatchThreshold" type="number" min="0" max="100" step="0.1" value="0.1">
+        </label>
+      </div>
+
+      <label>Clicca prima dello screenshot (selettore CSS)
+        <input name="clickSelector" placeholder="es. #accetta-cookie" autocomplete="off">
+      </label>
+
+      <div class="form-row">
+        <label>Aree da nascondere <small>uno per riga — lo spazio resta</small>
+          <textarea name="hideSelectors" rows="3" placeholder=".carousel&#10;.orologio"></textarea>
+        </label>
+        <label>Aree da rimuovere <small>uno per riga — lo spazio collassa</small>
+          <textarea name="removeSelectors" rows="3" placeholder=".cookie-banner"></textarea>
+        </label>
+      </div>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="scenario-cancel">Annulla</button>
+        <button type="submit" class="btn btn-primary" value="save">Salva scenario</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
