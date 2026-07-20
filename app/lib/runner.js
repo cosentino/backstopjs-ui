@@ -105,6 +105,29 @@ function createRunner({ dataDir, backstopCmd = 'backstop', maxHistory = 50 }) {
       return publicRun(run);
     },
 
+    // Registra un'esecuzione già conclusa: serve alle operazioni svolte in
+    // process (l'approvazione), che non passano da spawn ma devono comunque
+    // comparire nel pannello esecuzioni con il loro log.
+    record({ project, command, filter = null, log = '', ok = true }) {
+      const now = new Date().toISOString();
+      const run = {
+        id: randomUUID(),
+        project,
+        command,
+        filter,
+        status: ok ? 'success' : 'failed',
+        createdAt: now,
+        startedAt: now,
+        endedAt: now,
+        exitCode: ok ? 0 : 1,
+        log,
+      };
+      runs.set(run.id, run);
+      order.push(run.id);
+      trimHistory();
+      return publicRun(run);
+    },
+
     get(id) {
       return runs.get(id);
     },

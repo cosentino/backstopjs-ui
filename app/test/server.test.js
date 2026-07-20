@@ -135,6 +135,60 @@ test('GET /api/projects/:slug/result senza report → 404', async () => {
   assert.strictEqual(res.status, 404);
 });
 
+test('POST run approve senza report → 404', async () => {
+  const res = await api('/api/projects/sito-test/runs', {
+    method: 'POST',
+    body: JSON.stringify({ command: 'approve' }),
+  });
+  assert.strictEqual(res.status, 404);
+});
+
+test("POST run approve promuove solo la pagina indicata", async () => {
+  const data = path.join(dataDir, 'projects', 'sito-test', 'backstop_data');
+  const reportDir = path.join(data, 'html_report');
+  const testDir = path.join(data, 'bitmaps_test', '20260720-211218');
+  const refDir = path.join(data, 'bitmaps_reference');
+  for (const d of [reportDir, testDir, refDir]) fs.mkdirSync(d, { recursive: true });
+
+  const pair = (label, fileName) => ({
+    pair: {
+      reference: `../bitmaps_reference/${fileName}`,
+      test: `../bitmaps_test/20260720-211218/${fileName}`,
+      fileName,
+      label,
+      viewportLabel: 'mobile',
+      diff: { misMatchPercentage: '7.81' },
+    },
+    status: 'fail',
+  });
+  const tests = [
+    pair('Home', 'sito_Home_0_document_0_mobile.png'),
+    pair('About', 'sito_About_0_document_0_mobile.png'),
+  ];
+  for (const t of tests) {
+    fs.writeFileSync(path.join(testDir, t.pair.fileName), 'nuovo');
+    fs.writeFileSync(path.join(refDir, t.pair.fileName), 'vecchio');
+  }
+  fs.writeFileSync(path.join(reportDir, 'config.js'), `report(${JSON.stringify({ tests })});`);
+
+  const res = await api('/api/projects/sito-test/runs', {
+    method: 'POST',
+    body: JSON.stringify({ command: 'approve', scenarioLabel: 'Home' }),
+  });
+  assert.strictEqual(res.status, 202);
+  const { run } = await res.json();
+  assert.strictEqual(run.status, 'success');
+  assert.strictEqual(run.filter, 'Home');
+
+  const read = (name) => fs.readFileSync(path.join(refDir, name), 'utf8');
+  assert.strictEqual(read('sito_Home_0_document_0_mobile.png'), 'nuovo');
+  assert.strictEqual(read('sito_About_0_document_0_mobile.png'), 'vecchio', 'About non era nel filtro');
+
+  const text = await (await api(`/api/runs/${run.id}/log`)).text();
+  assert.match(text, /sito_Home_0_document_0_mobile\.png/);
+  assert.match(text, /event: status/);
+});
+
 test('DELETE progetto → 204, poi GET → 404', async () => {
   const res = await api('/api/projects/sito-test', { method: 'DELETE' });
   assert.strictEqual(res.status, 204);

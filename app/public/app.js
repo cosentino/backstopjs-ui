@@ -233,6 +233,28 @@
       (lastResult?.tests || []).filter((t) => t.status === 'fail').map((t) => t.label)
     );
 
+    // L'approvazione agisce sul report dell'ultimo test. Se quel test era
+    // filtrato su una pagina, copre solo quella: dichiariamo lo scope reale
+    // invece di promettere "tutte".
+    const testedLabels = [...new Set((lastResult?.tests || []).map((t) => t.label))];
+    const partialScope = Boolean(lastResult) && testedLabels.length < config.scenarios.length;
+    const nothingToApprove = !lastResult || lastResult.summary.failed === 0;
+
+    let approveLabel = 'Approva tutte le differenze';
+    if (partialScope) {
+      approveLabel = testedLabels.length === 1
+        ? `Approva le differenze di «${testedLabels[0]}»`
+        : `Approva le differenze dell'ultimo test (${testedLabels.length} pagine)`;
+    }
+
+    let approveHint = "Promuove a baseline gli screenshot dell'ultimo test.";
+    if (!lastResult) approveHint = 'Nessun test eseguito finora.';
+    else if (lastResult.summary.failed === 0) approveHint = 'Nessuna differenza da approvare.';
+    else if (partialScope) {
+      approveHint = `L'ultimo test riguardava solo: ${testedLabels.join(', ')}. `
+        + 'Per approvare tutte le pagine esegui prima un test completo.';
+    }
+
     async function saveConfig(mutate) {
       const next = structuredClone(config);
       mutate(next);
@@ -244,14 +266,18 @@
 
     const scenarioRows = config.scenarios.map((sc, i) => {
       const ignored = (sc.hideSelectors?.length || 0) + (sc.removeSelectors?.length || 0);
-      return `<tr class="${failsByScenario.has(sc.label) ? 'row-fail' : ''}">
+      const canApprove = failsByScenario.has(sc.label);
+      const approveTitle = canApprove
+        ? `Promuove a baseline gli screenshot di "${sc.label}" dall'ultimo test.`
+        : "Nessuna differenza da approvare per questa pagina nell'ultimo test.";
+      return `<tr class="${canApprove ? 'row-fail' : ''}">
         <td class="mono">${esc(sc.label)}</td>
         <td class="mono">${esc(sc.url)}</td>
         <td class="mono">${ignored || '—'}</td>
         <td><div class="actions-cell">
           <button class="btn btn-ghost" data-edit="${i}">Modifica</button>
           <button class="btn btn-ghost" data-run-one="${i}">Test</button>
-          <button class="btn btn-ghost" data-approve-one="${i}">Approva</button>
+          <button class="btn btn-ghost" data-approve-one="${i}" title="${esc(approveTitle)}" ${canApprove ? '' : 'disabled'}>Approva</button>
           <button class="btn btn-danger" data-del="${i}">Elimina</button>
         </div></td>
       </tr>`;
@@ -276,7 +302,7 @@
       <div class="run-actions">
         <button class="btn" id="run-reference">Crea/aggiorna baseline</button>
         <button class="btn btn-primary" id="run-test" ${config.scenarios.length ? '' : 'disabled'}>Esegui test</button>
-        <button class="btn" id="run-approve" ${lastResult ? '' : 'disabled'}>Approva tutte le differenze</button>
+        <button class="btn" id="run-approve" title="${esc(approveHint)}" ${nothingToApprove ? 'disabled' : ''}>${esc(approveLabel)}</button>
         <span class="spacer"></span>
         <button class="btn btn-danger" id="del-project">Elimina progetto</button>
       </div>
@@ -323,7 +349,11 @@
     });
     view.querySelector('#run-test').addEventListener('click', () => goRun('test'));
     view.querySelector('#run-approve').addEventListener('click', () => {
-      if (confirm("Promuove gli screenshot dell'ultimo test a nuova baseline. Continuare?")) {
+      const scope = partialScope
+        ? `Verranno approvate solo le differenze di: ${testedLabels.join(', ')}.\n`
+          + 'Per approvare tutte le pagine esegui prima un test completo.\n\n'
+        : '';
+      if (confirm(`${scope}Promuove gli screenshot dell'ultimo test a nuova baseline. Continuare?`)) {
         goRun('approve');
       }
     });

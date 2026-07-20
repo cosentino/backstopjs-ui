@@ -108,7 +108,9 @@ Test unitari (serve Node ≥ 20 in locale): `cd app && npm test`.
 - **Porta 3000 o 8081 occupata** — cambia i mapping in `docker-compose.yml`.
 - **"Approva" non ha approvato tutto** — l'approvazione promuove gli screenshot
   dell'**ultimo test eseguito**: se era filtrato su una pagina, approva solo
-  quella. Esegui prima un test completo.
+  quella, e il bottone lo dichiara ("Approva le differenze di «Home»"). Per
+  approvare tutto esegui prima un test completo. I bottoni sono disabilitati
+  quando l'ultimo test non ha differenze da promuovere.
 - **Test instabili su pagine con contenuto dinamico** — aggiungi i selettori
   alle aree ignorate ("nascondi" mantiene lo spazio: se l'altezza varia, meglio
   "rimuovi" o un'altezza fissa nel CSS del sito).

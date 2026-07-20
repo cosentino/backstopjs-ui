@@ -4,6 +4,7 @@ const express = require('express');
 const projects = require('./lib/projects');
 const { createRunner, escapeFilter } = require('./lib/runner');
 const { getLastResult } = require('./lib/results');
+const { approveLastTest, formatApproveLog } = require('./lib/approve');
 const { crawl } = require('./lib/crawler');
 
 const RUN_COMMANDS = ['reference', 'test', 'approve'];
@@ -57,6 +58,22 @@ function createApp({ dataDir, runner }) {
       throw projects.httpError(400, `Comando non valido: usa ${RUN_COMMANDS.join(', ')}`);
     }
     projects.getProject(dataDir, req.params.slug); // 404 se non esiste
+
+    // L'approvazione non passa da BackstopJS: vedi lib/approve.js per il perché.
+    if (command === 'approve') {
+      const label = scenarioLabel || null;
+      const { promoted, missing } = approveLastTest(dataDir, req.params.slug, {
+        scenarioLabel: label,
+      });
+      const run = runner.record({
+        project: req.params.slug,
+        command,
+        filter: label,
+        log: formatApproveLog({ scenarioLabel: label, promoted, missing }),
+      });
+      return res.status(202).json({ run });
+    }
+
     const filter = scenarioLabel ? escapeFilter(scenarioLabel) : rawFilter || null;
     const run = runner.enqueue({ project: req.params.slug, command, filter });
     res.status(202).json({ run });

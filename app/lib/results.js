@@ -1,21 +1,29 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+// Cartella del report: i percorsi dentro config.js sono relativi a questa.
+function reportDir(dataDir, slug) {
+  return path.join(dataDir, 'projects', slug, 'backstop_data', 'html_report');
+}
+
+// Report grezzo, così com'è stato scritto da BackstopJS (null se assente/illeggibile).
+function readReport(dataDir, slug) {
+  try {
+    const txt = fs.readFileSync(path.join(reportDir(dataDir, slug), 'config.js'), 'utf8');
+    return JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
+  } catch {
+    return null;
+  }
+}
+
 // Legge l'esito dell'ultimo test dal report HTML generato da BackstopJS
 // (html_report/config.js, formato: `report({...});`).
 // Restituisce null se non c'è un report o non è leggibile.
 function getLastResult(dataDir, slug) {
-  const file = path.join(
-    dataDir,
-    'projects',
-    slug,
-    'backstop_data',
-    'html_report',
-    'config.js'
-  );
+  const file = path.join(reportDir(dataDir, slug), 'config.js');
   try {
-    const txt = fs.readFileSync(file, 'utf8');
-    const data = JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
+    const data = readReport(dataDir, slug);
+    if (!data) return null;
     const tests = (data.tests || []).map((t) => ({
       label: t.pair.label,
       viewport: t.pair.viewportLabel,
@@ -33,4 +41,4 @@ function getLastResult(dataDir, slug) {
   }
 }
 
-module.exports = { getLastResult };
+module.exports = { getLastResult, readReport, reportDir };
