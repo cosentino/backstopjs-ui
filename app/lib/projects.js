@@ -50,6 +50,15 @@ function canonicalPaths(slug) {
   };
 }
 
+function defaultPageDefaults() {
+  return {
+    delay: 300,
+    misMatchThreshold: 0.1,
+    hideSelectors: [],
+    removeSelectors: [],
+  };
+}
+
 function newProjectConfig(slug) {
   return {
     id: slug,
@@ -60,6 +69,7 @@ function newProjectConfig(slug) {
     ],
     onBeforeScript: 'puppet/onBefore.js',
     onReadyScript: 'puppet/onReady.js',
+    pageDefaults: defaultPageDefaults(),
     scenarios: [],
     paths: canonicalPaths(slug),
     report: ['browser'],
@@ -126,10 +136,31 @@ function cleanStringArray(value, fieldName, scenarioLabel) {
   return value.filter((s) => typeof s === 'string' && s.trim() !== '').map((s) => s.trim());
 }
 
+// Normalizza le impostazioni predefinite usate come punto di partenza per le
+// nuove pagine (form manuale e crawler). Progetti creati prima di questa
+// funzionalità non hanno "pageDefaults": qui viene aggiunto con dei default.
+function validatePageDefaults(defaults) {
+  if (defaults === undefined || defaults === null) return defaultPageDefaults();
+  if (typeof defaults !== 'object') {
+    throw httpError(400, '"pageDefaults" deve essere un oggetto');
+  }
+  const out = {
+    delay: Number.isFinite(defaults.delay) ? defaults.delay : 300,
+    misMatchThreshold: Number.isFinite(defaults.misMatchThreshold) ? defaults.misMatchThreshold : 0.1,
+    hideSelectors: cleanStringArray(defaults.hideSelectors, 'hideSelectors', 'predefinito') || [],
+    removeSelectors: cleanStringArray(defaults.removeSelectors, 'removeSelectors', 'predefinito') || [],
+  };
+  const click = typeof defaults.clickSelector === 'string' ? defaults.clickSelector.trim() : '';
+  if (click) out.clickSelector = click;
+  return out;
+}
+
 function validateConfig(slug, config) {
   if (!config || typeof config !== 'object') {
     throw httpError(400, 'Configurazione mancante o non valida');
   }
+
+  config.pageDefaults = validatePageDefaults(config.pageDefaults);
 
   if (!Array.isArray(config.viewports) || config.viewports.length === 0) {
     throw httpError(400, 'Serve almeno un viewport');
