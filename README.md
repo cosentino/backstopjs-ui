@@ -12,7 +12,7 @@ pinnata), quindi il rendering è identico su ogni macchina.
 ./up.sh
 ```
 
-- **Dashboard: http://localhost:3000**
+- Dashboard: http://localhost:3000
 - Sito demo: http://localhost:8081
 
 La prima build scarica l'immagine BackstopJS (~1.5 GB) e installa due dipendenze

@@ -23,6 +23,13 @@ function canConnect(hostname, port, timeoutMs = 800) {
 // verso quell'host su "host.docker.internal", che Docker mappa all'host:
 // così l'utente può scrivere localhost/127.0.0.1 nello scenario senza
 // doversi preoccupare di dove gira davvero BackstopJS.
+//
+// Nota: non basta "request.continue({ url })" con l'hostname riscritto.
+// Chrome applica la riscrittura solo alla richiesta di navigazione
+// principale; per le sotto-risorse (css, js, immagini, font, ...) la
+// blocca (net::ERR_BLOCKED_BY_CLIENT), lasciando la pagina catturata senza
+// stile. Per questo qui la richiesta viene rifatta noi stessi verso
+// l'host giusto e la risposta inoltrata a Chrome con request.respond().
 module.exports = async (page, scenario) => {
   let target;
   try {
@@ -38,7 +45,7 @@ module.exports = async (page, scenario) => {
 
   const originalHostname = target.hostname;
   await page.setRequestInterception(true);
-  page.on('request', (req) => {
+  page.on('request', async (req) => {
     let url;
     try {
       url = new URL(req.url());
@@ -51,6 +58,23 @@ module.exports = async (page, scenario) => {
       return;
     }
     url.hostname = 'host.docker.internal';
-    req.continue({ url: url.href });
+    try {
+      const upstream = await fetch(url.href, {
+        method: req.method(),
+        headers: req.headers(),
+        body: req.postData(),
+      });
+      const body = Buffer.from(await upstream.arrayBuffer());
+      const headers = {};
+      upstream.headers.forEach((value, key) => {
+        // fetch() ha già decodificato la risposta: content-encoding/length
+        // originali non corrispondono più al body che stiamo inoltrando.
+        if (key === 'content-encoding' || key === 'content-length') return;
+        headers[key] = value;
+      });
+      await req.respond({ status: upstream.status, headers, body });
+    } catch {
+      req.abort();
+    }
   });
 };
