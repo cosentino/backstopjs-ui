@@ -29,6 +29,15 @@ function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'vrt-run-'));
 }
 
+// Comando che dorme a lungo, per testare l'annullamento di un run 'running'.
+// Ignora gli argomenti passati da runner (--config, --filter, ecc).
+function sleepCmd(dir) {
+  const p = path.join(dir, 'sleep-cmd.sh');
+  fs.writeFileSync(p, '#!/bin/sh\nsleep 30\n');
+  fs.chmodSync(p, 0o755);
+  return p;
+}
+
 test('escapeFilter: regex ancorata e con escape', () => {
   assert.strictEqual(escapeFilter('Home'), '^Home$');
   assert.strictEqual(escapeFilter('Home (v2)'), '^Home \\(v2\\)$');
@@ -74,6 +83,51 @@ test('subscribe: riceve eventi log e status', async () => {
   await new Promise((r) => setTimeout(r, 50));
   assert.ok(events.some((e) => e.type === 'log'), 'manca evento log');
   assert.ok(events.some((e) => e.type === 'status' && e.run.status === 'success'), 'manca evento status');
+});
+
+test('cancel: un run in coda viene rimosso senza mai partire', async () => {
+  const dir = tempDir();
+  const runner = createRunner({ dataDir: dir, backstopCmd: sleepCmd(dir) });
+  const r1 = runner.enqueue({ project: 'a', command: 'test' }); // occupa il worker
+  const r2 = runner.enqueue({ project: 'b', command: 'test' }); // resta in coda
+
+  await waitForStatus(runner, r1.id, ['running']);
+  assert.strictEqual(runner.get(r2.id).status, 'queued');
+
+  const cancelled = runner.cancel(r2.id);
+  assert.strictEqual(cancelled.status, 'cancelled');
+  assert.ok(cancelled.endedAt);
+  assert.strictEqual(runner.get(r2.id).status, 'cancelled');
+
+  runner.cancel(r1.id); // pulizia: non lasciare il processo appeso al termine del test
+});
+
+test('cancel: un run in corso viene interrotto (SIGTERM)', async () => {
+  const dir = tempDir();
+  const runner = createRunner({ dataDir: dir, backstopCmd: sleepCmd(dir) });
+  const run = runner.enqueue({ project: 'demo', command: 'test' });
+
+  await waitForStatus(runner, run.id, ['running']);
+  const cancelled = runner.cancel(run.id);
+  assert.strictEqual(cancelled.status, 'running'); // l'annullamento è async: kill inviato, non ancora concluso
+
+  const done = await waitForStatus(runner, run.id, ['cancelled', 'success', 'failed']);
+  assert.strictEqual(done.status, 'cancelled');
+  assert.ok(done.endedAt);
+});
+
+test('cancel: run già concluso è un no-op', async () => {
+  const runner = createRunner({ dataDir: tempDir(), backstopCmd: 'echo' });
+  const run = runner.enqueue({ project: 'demo', command: 'test' });
+  await waitForStatus(runner, run.id, ['success', 'failed']);
+
+  const result = runner.cancel(run.id);
+  assert.strictEqual(result.status, 'success');
+});
+
+test('cancel: id sconosciuto ritorna null', () => {
+  const runner = createRunner({ dataDir: tempDir(), backstopCmd: 'echo' });
+  assert.strictEqual(runner.cancel('non-esiste'), null);
 });
 
 test('list: più recenti prima, senza log', async () => {

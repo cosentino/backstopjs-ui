@@ -264,6 +264,9 @@ table.scenarios-table td.truncate {
 
 .section-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; }
 
+/* form impostazioni predefinite pagina: stesso layout del dialog scenario */
+.settings-form { display: flex; flex-direction: column; gap: 0.75rem; max-width: 640px; }
+
 /* ---------- barra azioni progetto ---------- */
 
 .project-head { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
@@ -335,9 +338,16 @@ table.scenarios-table td.truncate {
 .dot-queued { background: var(--muted); }
 .dot-success { background: var(--pass); }
 .dot-failed { background: var(--diff); }
+.dot-cancelled { background: var(--muted); }
 @keyframes pulse { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) {
   .dot-running { animation: none; }
+}
+
+.run-line .btn-stop {
+  margin-left: auto;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.7rem;
 }
 
 .run-log {

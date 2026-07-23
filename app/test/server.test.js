@@ -130,6 +130,57 @@ test('GET /api/runs/sconosciuto → 404', async () => {
   assert.strictEqual(res.status, 404);
 });
 
+test('POST /api/runs/:id/cancel → 404 su id sconosciuto', async () => {
+  const res = await api('/api/runs/id-inventato/cancel', { method: 'POST' });
+  assert.strictEqual(res.status, 404);
+});
+
+test('POST /api/runs/:id/cancel interrompe un run in corso', async () => {
+  // Server isolato con un comando lento: quello condiviso ('echo') finisce
+  // troppo in fretta per catturare lo stato 'running'.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vrt-srv-cancel-'));
+  fs.mkdirSync(path.join(dir, 'projects', 'demo'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'projects', 'demo', 'backstop.json'), '{}');
+  const sleepScript = path.join(dir, 'sleep-cmd.sh');
+  fs.writeFileSync(sleepScript, '#!/bin/sh\nsleep 30\n');
+  fs.chmodSync(sleepScript, 0o755);
+
+  const runner = createRunner({ dataDir: dir, backstopCmd: sleepScript });
+  const app = createApp({ dataDir: dir, runner });
+  const srv = app.listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
+  const localBase = `http://127.0.0.1:${srv.address().port}`;
+  const local = (p, opts) => fetch(localBase + p, { headers: { 'Content-Type': 'application/json' }, ...opts });
+
+  try {
+    const { run } = await (await local('/api/projects/demo/runs', {
+      method: 'POST',
+      body: JSON.stringify({ command: 'test' }),
+    })).json();
+
+    let running;
+    for (let i = 0; i < 100; i++) {
+      running = await (await local(`/api/runs/${run.id}`)).json();
+      if (running.status === 'running') break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.strictEqual(running.status, 'running');
+
+    const cancelRes = await local(`/api/runs/${run.id}/cancel`, { method: 'POST' });
+    assert.strictEqual(cancelRes.status, 200);
+
+    let done;
+    for (let i = 0; i < 200; i++) {
+      done = await (await local(`/api/runs/${run.id}`)).json();
+      if (done.status === 'cancelled') break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.strictEqual(done.status, 'cancelled');
+  } finally {
+    srv.close();
+  }
+});
+
 test('GET /api/projects/:slug/result senza report → 404', async () => {
   const res = await api('/api/projects/sito-test/result');
   assert.strictEqual(res.status, 404);

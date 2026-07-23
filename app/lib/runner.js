@@ -7,6 +7,21 @@ function escapeFilter(label) {
   return '^' + String(label).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
 }
 
+// Segnala l'intero gruppo di processi (pid negativo): vedi il commento su
+// detached in work(). Ricade sul solo child se il processo è già uscito o il
+// pid non è disponibile (es. su piattaforme senza gruppi di processi).
+function killGroup(child, signal) {
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      // già uscito: niente da fare
+    }
+  }
+}
+
 // Coda FIFO con un solo worker: BackstopJS avvia Chromium, meglio un run alla
 // volta. I run vivono in memoria (il risultato persistente è il report su disco).
 function createRunner({ dataDir, backstopCmd = 'backstop', maxHistory = 50 }) {
@@ -15,6 +30,8 @@ function createRunner({ dataDir, backstopCmd = 'backstop', maxHistory = 50 }) {
   const queue = [];
   const listeners = new Map(); // id -> Set<fn>
   let working = false;
+  let currentChild = null;
+  let currentRunId = null;
 
   function emit(id, event) {
     const subs = listeners.get(id);
@@ -53,10 +70,18 @@ function createRunner({ dataDir, backstopCmd = 'backstop', maxHistory = 50 }) {
     const args = [run.command, `--config=projects/${run.project}/backstop.json`];
     if (run.filter) args.push(`--filter=${run.filter}`);
 
+    // detached: true rende il child leader di un proprio gruppo di processi.
+    // BackstopJS avvia Chromium come nipote: se al cancel mandassimo il
+    // segnale solo al child diretto, Chromium potrebbe restare orfano (e
+    // tenere aperte le pipe di stdio, con l'evento 'close' che non arriva
+    // mai). Segnalando l'intero gruppo (pid negativo) li fermiamo tutti.
     const child = spawn(backstopCmd, args, {
       cwd: dataDir,
       env: { ...process.env },
+      detached: true,
     });
+    currentChild = child;
+    currentRunId = run.id;
 
     const onData = (chunk) => {
       const text = chunk.toString();
@@ -73,8 +98,10 @@ function createRunner({ dataDir, backstopCmd = 'backstop', maxHistory = 50 }) {
     });
 
     child.on('close', (code) => {
+      currentChild = null;
+      currentRunId = null;
       run.exitCode = code;
-      run.status = code === 0 ? 'success' : 'failed';
+      run.status = run.cancelRequested ? 'cancelled' : code === 0 ? 'success' : 'failed';
       run.endedAt = new Date().toISOString();
       emit(run.id, { type: 'status', run: publicRun(run) });
       trimHistory();
@@ -143,6 +170,38 @@ function createRunner({ dataDir, backstopCmd = 'backstop', maxHistory = 50 }) {
       if (!listeners.has(id)) listeners.set(id, new Set());
       listeners.get(id).add(fn);
       return () => listeners.get(id)?.delete(fn);
+    },
+
+    // Annulla un run in coda (rimosso senza mai partire) o in corso (SIGTERM
+    // al processo backstop, con SIGKILL di riserva se non termina). Sui run
+    // già conclusi non fa nulla.
+    cancel(id) {
+      const run = runs.get(id);
+      if (!run) return null;
+
+      if (run.status === 'queued') {
+        const idx = queue.findIndex((r) => r.id === id);
+        if (idx !== -1) queue.splice(idx, 1);
+        run.status = 'cancelled';
+        run.endedAt = new Date().toISOString();
+        const line = "[runner] esecuzione annullata prima dell'avvio";
+        run.log += `\n${line}\n`;
+        emit(run.id, { type: 'log', line });
+        emit(run.id, { type: 'status', run: publicRun(run) });
+        trimHistory();
+        return publicRun(run);
+      }
+
+      if (run.status === 'running' && currentRunId === id && currentChild) {
+        run.cancelRequested = true;
+        const child = currentChild;
+        killGroup(child, 'SIGTERM');
+        setTimeout(() => {
+          if (currentChild === child) killGroup(child, 'SIGKILL');
+        }, 5000).unref();
+      }
+
+      return publicRun(run);
     },
   };
 }

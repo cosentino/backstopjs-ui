@@ -8,6 +8,7 @@ const { approveLastTest, formatApproveLog } = require('./lib/approve');
 const { crawl } = require('./lib/crawler');
 
 const RUN_COMMANDS = ['reference', 'test', 'approve'];
+const TERMINAL_STATUSES = ['success', 'failed', 'cancelled'];
 
 function createApp({ dataDir, runner }) {
   const app = express();
@@ -90,6 +91,12 @@ function createApp({ dataDir, runner }) {
     res.json(meta);
   });
 
+  app.post('/api/runs/:id/cancel', (req, res) => {
+    if (!runner.get(req.params.id)) throw projects.httpError(404, 'Run non trovato');
+    const run = runner.cancel(req.params.id);
+    res.json({ run });
+  });
+
   // Log live via Server-Sent Events. Se il run è già concluso: replay del log,
   // evento status e chiusura dello stream.
   app.get('/api/runs/:id/log', (req, res) => {
@@ -111,7 +118,7 @@ function createApp({ dataDir, runner }) {
       if (line.trim() !== '') send('log', { line });
     }
 
-    if (run.status === 'success' || run.status === 'failed') {
+    if (TERMINAL_STATUSES.includes(run.status)) {
       const { log, ...meta } = run;
       send('status', { run: meta });
       res.end();
@@ -122,7 +129,7 @@ function createApp({ dataDir, runner }) {
       if (ev.type === 'log') send('log', { line: ev.line });
       if (ev.type === 'status') {
         send('status', { run: ev.run });
-        if (ev.run.status === 'success' || ev.run.status === 'failed') {
+        if (TERMINAL_STATUSES.includes(ev.run.status)) {
           unsubscribe();
           res.end();
         }

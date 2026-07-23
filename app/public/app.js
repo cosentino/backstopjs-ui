@@ -65,10 +65,13 @@
       running: 'in corso',
       success: 'completato',
       failed: run.command === 'test' ? 'differenze trovate' : 'errore',
-    }[run.status];
+      cancelled: 'annullato',
+    }[run.status] || run.status;
+    const stoppable = run.status === 'queued' || run.status === 'running';
     return `<div class="run-line">
       <span class="dot dot-${esc(run.status)}"></span>
       <b>${esc(run.project)}</b> · ${esc(label)} · ${esc(status)}
+      ${stoppable ? `<button class="btn btn-ghost btn-stop" data-cancel-run="${esc(run.id)}">Ferma</button>` : ''}
     </div>`;
   }
 
@@ -96,7 +99,7 @@
     eventSource.addEventListener('status', (ev) => {
       const { run: updated } = JSON.parse(ev.data);
       runCurrent.innerHTML = runLine(updated);
-      if (updated.status === 'success' || updated.status === 'failed') {
+      if (updated.status === 'success' || updated.status === 'failed' || updated.status === 'cancelled') {
         eventSource.close();
         refreshHistory();
         render(); // aggiorna badge/esiti della vista corrente
@@ -104,6 +107,14 @@
     });
     eventSource.onerror = () => eventSource.close();
   }
+
+  runCurrent.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-cancel-run]');
+    if (!btn) return;
+    btn.disabled = true;
+    api(`/api/runs/${btn.dataset.cancelRun}/cancel`, { method: 'POST' })
+      .catch((err) => toast(err.message));
+  });
 
   async function launchRun(slug, command, scenarioLabel) {
     const { run } = await api(`/api/projects/${slug}/runs`, {
@@ -195,19 +206,52 @@
     return scenario;
   }
 
-  function openScenarioDialog(scenario, onSave) {
+  // Impostazioni predefinite a livello di progetto: usate come punto di
+  // partenza per nuove pagine (form manuale e crawler). Gestisce anche
+  // progetti creati prima di questa funzionalità (pageDefaults assente).
+  function projectDefaults(config) {
+    const d = config.pageDefaults || {};
+    return {
+      delay: d.delay ?? 300,
+      misMatchThreshold: d.misMatchThreshold ?? 0.1,
+      clickSelector: d.clickSelector || '',
+      hideSelectors: d.hideSelectors || [],
+      removeSelectors: d.removeSelectors || [],
+    };
+  }
+
+  function defaultsFromForm(form) {
+    const data = new FormData(form);
+    const lines = (name) => String(data.get(name) || '')
+      .split('\n').map((s) => s.trim()).filter(Boolean);
+    const defaults = {
+      delay: Number(data.get('delay')) || 0,
+      misMatchThreshold: Number(data.get('misMatchThreshold')) || 0.1,
+      hideSelectors: lines('hideSelectors'),
+      removeSelectors: lines('removeSelectors'),
+    };
+    const click = String(data.get('clickSelector') || '').trim();
+    if (click) defaults.clickSelector = click;
+    return defaults;
+  }
+
+  // Le pagine sono valori concreti: alla creazione ereditano i predefiniti
+  // del progetto, poi restano modificabili singolarmente senza legame col
+  // progetto (coerente col fatto che BackstopJS legge scenari già risolti).
+  function openScenarioDialog(scenario, defaults, onSave) {
     const dialog = document.getElementById('scenario-dialog');
     const form = document.getElementById('scenario-form');
     document.getElementById('scenario-dialog-title').textContent =
       scenario ? `Modifica: ${scenario.label}` : 'Nuova pagina da controllare';
 
+    const base = scenario || defaults;
     form.label.value = scenario?.label || '';
     form.url.value = scenario?.url || '';
-    form.delay.value = scenario?.delay ?? 300;
-    form.misMatchThreshold.value = scenario?.misMatchThreshold ?? 0.1;
-    form.clickSelector.value = scenario?.clickSelector || '';
-    form.hideSelectors.value = (scenario?.hideSelectors || []).join('\n');
-    form.removeSelectors.value = (scenario?.removeSelectors || []).join('\n');
+    form.delay.value = base?.delay ?? 300;
+    form.misMatchThreshold.value = base?.misMatchThreshold ?? 0.1;
+    form.clickSelector.value = base?.clickSelector || '';
+    form.hideSelectors.value = (base?.hideSelectors || []).join('\n');
+    form.removeSelectors.value = (base?.removeSelectors || []).join('\n');
 
     form.onsubmit = (ev) => {
       ev.preventDefault();
@@ -228,6 +272,7 @@
         <div class="empty">${esc(err.message)}</div>`;
       return;
     }
+    const defaults = projectDefaults(config);
     const lastResult = await api(`/api/projects/${slug}/result`).catch(() => null);
     const failsByScenario = new Set(
       (lastResult?.tests || []).filter((t) => t.status === 'fail').map((t) => t.label)
@@ -308,6 +353,35 @@
       </div>
 
       <section class="section">
+        <h2>Impostazioni predefinite pagina</h2>
+        <p class="hint">Punto di partenza per le nuove pagine (a mano o dal crawler). Ogni pagina resta modificabile singolarmente.</p>
+        <form id="defaults-form" class="settings-form">
+          <div class="form-row">
+            <label>Attesa dopo il load (ms)
+              <input name="delay" type="number" min="0" step="100" value="${defaults.delay}">
+            </label>
+            <label>Soglia differenze (%)
+              <input name="misMatchThreshold" type="number" min="0" max="100" step="0.1" value="${defaults.misMatchThreshold}">
+            </label>
+          </div>
+          <label>Clicca prima dello screenshot (selettore CSS)
+            <input name="clickSelector" placeholder="es. #accetta-cookie" value="${esc(defaults.clickSelector)}" autocomplete="off">
+          </label>
+          <div class="form-row">
+            <label>Aree da nascondere <small>uno per riga — lo spazio resta</small>
+              <textarea name="hideSelectors" rows="3" placeholder=".carousel&#10;.orologio">${esc(defaults.hideSelectors.join('\n'))}</textarea>
+            </label>
+            <label>Aree da rimuovere <small>uno per riga — lo spazio collassa</small>
+              <textarea name="removeSelectors" rows="3" placeholder=".cookie-banner">${esc(defaults.removeSelectors.join('\n'))}</textarea>
+            </label>
+          </div>
+          <div class="section-actions">
+            <button class="btn btn-primary" type="submit">Salva impostazioni predefinite</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="section">
         <h2>Pagine sotto controllo (${config.scenarios.length})</h2>
         ${config.scenarios.length ? `<div class="table-wrap"><table class="scenarios-table">
           <thead><tr><th>Nome</th><th>URL</th><th>Ignorati</th><th>Azioni</th></tr></thead>
@@ -368,9 +442,16 @@
       } catch (err) { toast(err.message); }
     });
 
+    // --- impostazioni predefinite ---
+    view.querySelector('#defaults-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const next = defaultsFromForm(ev.target);
+      saveConfig((cfg) => { cfg.pageDefaults = next; });
+    });
+
     // --- scenari ---
     view.querySelector('#add-scenario').addEventListener('click', () => {
-      openScenarioDialog(null, (scenario) => {
+      openScenarioDialog(null, defaults, (scenario) => {
         saveConfig((cfg) => cfg.scenarios.push(scenario));
       });
     });
@@ -378,7 +459,7 @@
     view.querySelectorAll('[data-edit]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const i = Number(btn.dataset.edit);
-        openScenarioDialog(config.scenarios[i], (updated) => {
+        openScenarioDialog(config.scenarios[i], defaults, (updated) => {
           saveConfig((cfg) => {
             // preserva i campi avanzati non gestiti dal form
             cfg.scenarios[i] = { ...cfg.scenarios[i], ...updated };
@@ -447,13 +528,17 @@
               label = label.replace(/^\//, '').replace(/\//g, ' / ') || 'home';
               while (labels.has(label)) label += ' (2)';
               labels.add(label);
-              cfg.scenarios.push({
+              const scenario = {
                 label,
                 url: page.url,
-                delay: 300,
-                misMatchThreshold: 0.1,
+                delay: defaults.delay,
+                misMatchThreshold: defaults.misMatchThreshold,
                 requireSameDimensions: true,
-              });
+                hideSelectors: [...defaults.hideSelectors],
+                removeSelectors: [...defaults.removeSelectors],
+              };
+              if (defaults.clickSelector) scenario.clickSelector = defaults.clickSelector;
+              cfg.scenarios.push(scenario);
             }
           });
         });
