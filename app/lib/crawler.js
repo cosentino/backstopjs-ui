@@ -41,7 +41,16 @@ async function crawl(startUrl, { maxPages = 30, maxDepth = 2, fetchTimeoutMs = 8
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('text/html')) continue;
       html = await res.text();
-    } catch {
+    } catch (err) {
+      // Se anche l'URL di partenza non è raggiungibile (rete, DNS, timeout),
+      // meglio segnalarlo che restituire silenziosamente un elenco vuoto:
+      // capita ad es. quando il target gira su un host/container non
+      // raggiungibile da chi esegue il crawler.
+      if (depth === 0) {
+        const wrapped = new Error(`Impossibile raggiungere "${url}": ${err.message || err}`);
+        wrapped.status = 502;
+        throw wrapped;
+      }
       continue;
     }
 

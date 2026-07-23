@@ -73,3 +73,14 @@ test('crawl: pagina irraggiungibile ignorata senza errori', async () => {
   const { pages } = await crawl(base + '/does-not-exist');
   assert.deepStrictEqual(pages, []);
 });
+
+test('crawl: URL di partenza irraggiungibile (rete) solleva un errore chiaro', async () => {
+  await assert.rejects(
+    () => crawl('http://127.0.0.1:1/', { fetchTimeoutMs: 500 }),
+    (err) => {
+      assert.strictEqual(err.status, 502);
+      assert.match(err.message, /Impossibile raggiungere/);
+      return true;
+    },
+  );
+});
