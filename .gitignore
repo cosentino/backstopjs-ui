@@ -6,4 +6,9 @@ data/projects/*/backstop_data/html_report/
 data/projects/*/backstop_data/ci_report/
 
 # Le baseline (data/projects/*/backstop_data/bitmaps_reference/) invece
-# VANNO versionate: sono il riferimento condiviso del team.
+# ANDREBBERO versionate: sono il riferimento condiviso del team.
+
+# MA PER ORA IGNORO TUTTA LA FOLDER PROJECTS 
+# PER EVITARE COMMITTARE COSE SPECIFICHE DI PROGETTO 
+# E PER EVITARE DI APPESANTIRE IL REPOSITORY GIT
+data/projects

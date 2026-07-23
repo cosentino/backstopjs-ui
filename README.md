@@ -59,13 +59,14 @@ npm (express, cheerio): solo la prima volta.
 
 `data/` è la fonte di verità, **nel formato standard di BackstopJS**: ogni
 progetto è `data/projects/<slug>/backstop.json` (un progetto BackstopJS
-esistente si può copiare qui dentro così com'è). Da versionare in git: le
-config e le baseline
-(`bitmaps_reference/`); gli output rigenerabili sono già esclusi dal
-`.gitignore`.
+esistente si può copiare qui dentro così com'è). In teoria andrebbero
+versionate in git le config e le baseline (`bitmaps_reference/`); per ora
+però tutta `data/projects/` è esclusa dal `.gitignore`, per evitare di
+committare cose specifiche di progetto e di appesantire il repository.
 
 Workflow di team: chi modifica volutamente la UI esegue test + approva e
-committa le nuove baseline insieme alla modifica; gli altri fanno pull.
+condivide le nuove baseline con gli altri (per ora fuori da git, es. copiando
+la cartella `data/projects`).
 
 ## Deploy su un server condiviso
 
