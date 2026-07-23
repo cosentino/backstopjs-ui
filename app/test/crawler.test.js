@@ -84,3 +84,28 @@ test('crawl: URL di partenza irraggiungibile (rete) solleva un errore chiaro', a
     },
   );
 });
+
+test('crawl: se "localhost" non risponde, ritenta trasparentemente su host.docker.internal', async () => {
+  const realFetch = global.fetch;
+  const calls = [];
+  global.fetch = async (url) => {
+    calls.push(url);
+    if (new URL(url).hostname === 'host.docker.internal') {
+      return {
+        ok: true,
+        headers: { get: () => 'text/html; charset=utf-8' },
+        text: async () => '<html><head><title>Dal host</title></head><body></body></html>',
+      };
+    }
+    throw new Error('connect ECONNREFUSED');
+  };
+  try {
+    const { pages } = await crawl('http://localhost:9999/');
+    assert.deepStrictEqual(pages, [{ url: 'http://localhost:9999/', title: 'Dal host', depth: 0 }]);
+  } finally {
+    global.fetch = realFetch;
+  }
+  assert.strictEqual(calls.length, 2);
+  assert.match(calls[0], /^http:\/\/localhost:9999\//);
+  assert.match(calls[1], /^http:\/\/host\.docker\.internal:9999\//);
+});

@@ -12,6 +12,40 @@ function normalizeUrl(href, base) {
   }
 }
 
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1']);
+
+// Scarica una pagina. Ritorna l'HTML, o null se la risposta va ignorata
+// (status non-ok, content-type non HTML). Lancia in caso di errore di rete.
+async function fetchHtml(url, fetchTimeoutMs) {
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(fetchTimeoutMs),
+    redirect: 'follow',
+  });
+  if (!res.ok) return null;
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('text/html')) return null;
+  return res.text();
+}
+
+// In esecuzione dentro Docker, "localhost"/"127.0.0.1" nell'URL puntano al
+// container stesso, non all'host dove gira il sito da scansionare: se il
+// fetch diretto fallisce per errore di rete, ritenta con l'hostname speciale
+// che Docker mappa all'host, così l'utente non deve saperlo.
+async function fetchHtmlWithLocalFallback(url, fetchTimeoutMs) {
+  try {
+    return await fetchHtml(url, fetchTimeoutMs);
+  } catch (err) {
+    const parsed = new URL(url);
+    if (!LOCAL_HOSTNAMES.has(parsed.hostname)) throw err;
+    parsed.hostname = 'host.docker.internal';
+    try {
+      return await fetchHtml(parsed.href, fetchTimeoutMs);
+    } catch {
+      throw err; // riportiamo l'errore sull'URL originale, più chiaro per l'utente
+    }
+  }
+}
+
 // BFS same-origin a partire da startUrl. Gli errori delle singole pagine
 // (timeout, 404, content-type non HTML) non interrompono il crawl.
 async function crawl(startUrl, { maxPages = 30, maxDepth = 2, fetchTimeoutMs = 8000 } = {}) {
@@ -33,14 +67,7 @@ async function crawl(startUrl, { maxPages = 30, maxDepth = 2, fetchTimeoutMs = 8
 
     let html;
     try {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(fetchTimeoutMs),
-        redirect: 'follow',
-      });
-      if (!res.ok) continue;
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('text/html')) continue;
-      html = await res.text();
+      html = await fetchHtmlWithLocalFallback(url, fetchTimeoutMs);
     } catch (err) {
       // Se anche l'URL di partenza non è raggiungibile (rete, DNS, timeout),
       // meglio segnalarlo che restituire silenziosamente un elenco vuoto:
@@ -53,6 +80,7 @@ async function crawl(startUrl, { maxPages = 30, maxDepth = 2, fetchTimeoutMs = 8
       }
       continue;
     }
+    if (html == null) continue;
 
     const $ = cheerio.load(html);
     pages.push({
