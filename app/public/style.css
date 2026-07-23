@@ -76,7 +76,7 @@ body {
   align-items: start;
 }
 @media (max-width: 980px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ---------- titoli e testo ---------- */
@@ -241,6 +241,22 @@ td .btn { padding: 0.25rem 0.55rem; font-size: 0.72rem; }
 tr.row-fail td:first-child { box-shadow: inset 3px 0 0 var(--diff); }
 
 .actions-cell { white-space: nowrap; display: flex; gap: 0.35rem; }
+
+/* tabella pagine: larghezze fisse + troncamento per nomi/URL lunghi,
+   così le CTA in ultima colonna restano leggibili senza scroll orizzontale
+   nel caso normale; oltre il min-width il wrapper scrolla come fallback. */
+table.scenarios-table { table-layout: fixed; min-width: 640px; }
+table.scenarios-table th:nth-child(1), table.scenarios-table td:nth-child(1) { width: 18%; }
+table.scenarios-table th:nth-child(2), table.scenarios-table td:nth-child(2) { width: auto; }
+table.scenarios-table th:nth-child(3), table.scenarios-table td:nth-child(3) { width: 90px; }
+table.scenarios-table th:nth-child(4), table.scenarios-table td:nth-child(4) { width: 300px; }
+table.scenarios-table td.truncate {
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
 
 /* editor viewport: righe di input compatte */
 .vp-row { display: grid; grid-template-columns: 1fr 110px 110px auto; gap: 0.5rem; margin-bottom: 0.5rem; }

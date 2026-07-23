@@ -271,8 +271,8 @@
         ? `Promuove a baseline gli screenshot di "${sc.label}" dall'ultimo test.`
         : "Nessuna differenza da approvare per questa pagina nell'ultimo test.";
       return `<tr class="${canApprove ? 'row-fail' : ''}">
-        <td class="mono">${esc(sc.label)}</td>
-        <td class="mono">${esc(sc.url)}</td>
+        <td class="mono truncate" title="${esc(sc.label)}">${esc(sc.label)}</td>
+        <td class="mono truncate" title="${esc(sc.url)}">${esc(sc.url)}</td>
         <td class="mono">${ignored || '—'}</td>
         <td><div class="actions-cell">
           <button class="btn btn-ghost" data-edit="${i}">Modifica</button>
@@ -309,7 +309,7 @@
 
       <section class="section">
         <h2>Pagine sotto controllo (${config.scenarios.length})</h2>
-        ${config.scenarios.length ? `<div class="table-wrap"><table>
+        ${config.scenarios.length ? `<div class="table-wrap"><table class="scenarios-table">
           <thead><tr><th>Nome</th><th>URL</th><th>Ignorati</th><th>Azioni</th></tr></thead>
           <tbody>${scenarioRows}</tbody>
         </table></div>` : '<div class="empty">Nessuna pagina. Aggiungine una a mano o scoprile col crawler qui sotto.</div>'}
