@@ -55,6 +55,10 @@ npm (express, cheerio): solo la prima volta.
 | Dev server sull'host (es. `npm run dev` su :5173) | `http://host.docker.internal:5173/...` |
 | Il sito demo incluso | `http://demo/...` |
 
+Se una pagina usa `localhost`/`127.0.0.1` e non è raggiungibile dal
+container, l'avvio di baseline/test lo segnala e propone di sostituirlo con
+`host.docker.internal` in tutte le URL del progetto.
+
 ## Dati, baseline e condivisione col team
 
 `data/` è la fonte di verità, **nel formato standard di BackstopJS**: ogni

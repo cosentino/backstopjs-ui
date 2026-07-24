@@ -96,6 +96,29 @@ test('POST run: comando fuori allowlist → 400', async () => {
   assert.strictEqual(res.status, 400);
 });
 
+test('POST run: scenario su localhost irraggiungibile → 409 con elenco pagine', async () => {
+  const cfg = await (await api('/api/projects/sito-test')).json();
+  cfg.scenarios = [
+    { label: 'Home', url: 'http://demo/' },
+    { label: 'Locale', url: 'http://127.0.0.1:1/pagina' }, // porta 1: nessuno in ascolto
+  ];
+  await api('/api/projects/sito-test', { method: 'PUT', body: JSON.stringify(cfg) });
+
+  const res = await api('/api/projects/sito-test/runs', {
+    method: 'POST',
+    body: JSON.stringify({ command: 'test' }),
+  });
+  assert.strictEqual(res.status, 409);
+  const body = await res.json();
+  assert.strictEqual(body.code, 'LOCALHOST_UNREACHABLE');
+  assert.deepStrictEqual(body.affected, [{ label: 'Locale', url: 'http://127.0.0.1:1/pagina' }]);
+
+  // Ripristina lo stato lasciato da "PUT valida aggiorna la config", da cui
+  // dipendono i test successivi (scenario "Home").
+  cfg.scenarios = [{ label: 'Home', url: 'http://demo/', hideSelectors: ['.slider'] }];
+  await api('/api/projects/sito-test', { method: 'PUT', body: JSON.stringify(cfg) });
+});
+
 test('POST run test → 202, completa, log via SSE', async () => {
   const res = await api('/api/projects/sito-test/runs', {
     method: 'POST',

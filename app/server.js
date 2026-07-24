@@ -6,6 +6,7 @@ const { createRunner, escapeFilter } = require('./lib/runner');
 const { getLastResult } = require('./lib/results');
 const { approveLastTest, formatApproveLog } = require('./lib/approve');
 const { crawl } = require('./lib/crawler');
+const { findUnreachableLocalScenarios } = require('./lib/reachability');
 
 const RUN_COMMANDS = ['reference', 'test', 'approve'];
 const TERMINAL_STATUSES = ['success', 'failed', 'cancelled'];
@@ -53,31 +54,53 @@ function createApp({ dataDir, runner }) {
 
   // ---- Run -----------------------------------------------------------------
 
-  app.post('/api/projects/:slug/runs', (req, res) => {
-    const { command, scenarioLabel, rawFilter } = req.body || {};
-    if (!RUN_COMMANDS.includes(command)) {
-      throw projects.httpError(400, `Comando non valido: usa ${RUN_COMMANDS.join(', ')}`);
-    }
-    projects.getProject(dataDir, req.params.slug); // 404 se non esiste
+  // Express 4 non propaga i reject degli handler async: serve try/next.
+  app.post('/api/projects/:slug/runs', async (req, res, next) => {
+    try {
+      const { command, scenarioLabel, rawFilter } = req.body || {};
+      if (!RUN_COMMANDS.includes(command)) {
+        throw projects.httpError(400, `Comando non valido: usa ${RUN_COMMANDS.join(', ')}`);
+      }
+      const config = projects.getProject(dataDir, req.params.slug); // 404 se non esiste
 
-    // L'approvazione non passa da BackstopJS: vedi lib/approve.js per il perché.
-    if (command === 'approve') {
-      const label = scenarioLabel || null;
-      const { promoted, missing } = approveLastTest(dataDir, req.params.slug, {
-        scenarioLabel: label,
-      });
-      const run = runner.record({
-        project: req.params.slug,
-        command,
-        filter: label,
-        log: formatApproveLog({ scenarioLabel: label, promoted, missing }),
-      });
-      return res.status(202).json({ run });
-    }
+      // L'approvazione non passa da BackstopJS: vedi lib/approve.js per il perché.
+      if (command === 'approve') {
+        const label = scenarioLabel || null;
+        const { promoted, missing } = approveLastTest(dataDir, req.params.slug, {
+          scenarioLabel: label,
+        });
+        const run = runner.record({
+          project: req.params.slug,
+          command,
+          filter: label,
+          log: formatApproveLog({ scenarioLabel: label, promoted, missing }),
+        });
+        return res.status(202).json({ run });
+      }
 
-    const filter = scenarioLabel ? escapeFilter(scenarioLabel) : rawFilter || null;
-    const run = runner.enqueue({ project: req.params.slug, command, filter });
-    res.status(202).json({ run });
+      // reference/test lanciano davvero Chromium: se uno scenario punta a
+      // localhost/127.0.0.1 non raggiungibile dal container, meglio
+      // bloccare e far scegliere all'utente se correggere gli URL, invece
+      // di produrre screenshot silenziosamente rotti (mancano CSS/risorse).
+      const scenarios = Array.isArray(config.scenarios) ? config.scenarios : [];
+      const targeted = scenarioLabel
+        ? scenarios.filter((s) => s.label === scenarioLabel)
+        : scenarios;
+      const affected = await findUnreachableLocalScenarios(targeted);
+      if (affected.length > 0) {
+        return res.status(409).json({
+          error: 'Alcune pagine puntano a un indirizzo locale non raggiungibile dal container',
+          code: 'LOCALHOST_UNREACHABLE',
+          affected: affected.map((s) => ({ label: s.label, url: s.url })),
+        });
+      }
+
+      const filter = scenarioLabel ? escapeFilter(scenarioLabel) : rawFilter || null;
+      const run = runner.enqueue({ project: req.params.slug, command, filter });
+      res.status(202).json({ run });
+    } catch (err) {
+      next(err);
+    }
   });
 
   app.get('/api/runs', (req, res) => {

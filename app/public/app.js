@@ -29,7 +29,12 @@
     });
     if (res.status === 204) return null;
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `Errore ${res.status}`);
+    if (!res.ok) {
+      const err = new Error(body.error || `Errore ${res.status}`);
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
     return body;
   }
 
@@ -116,11 +121,57 @@
       .catch((err) => toast(err.message));
   });
 
+  const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1']);
+
+  function replaceLocalHost(url) {
+    try {
+      const u = new URL(url);
+      if (!LOCAL_HOSTNAMES.has(u.hostname)) return url;
+      u.hostname = 'host.docker.internal';
+      return u.href;
+    } catch {
+      return url;
+    }
+  }
+
+  // Se uno scenario punta a localhost/127.0.0.1 non raggiungibile dal
+  // container (tipicamente un dev server sulla macchina dell'utente), il
+  // server risponde 409: qui si propone la correzione (sostituire l'host
+  // con host.docker.internal, che Docker mappa alla macchina host) e, se
+  // confermata, si riprova il run con gli URL corretti e persistiti.
+  async function tryFixLocalhostAndRetry(slug, err) {
+    if (err.status !== 409 || err.body?.code !== 'LOCALHOST_UNREACHABLE') throw err;
+    const list = err.body.affected.map((s) => `• ${s.label}: ${s.url}`).join('\n');
+    const ok = confirm(
+      `${err.body.affected.length === 1 ? 'Questa pagina punta' : 'Queste pagine puntano'} `
+      + `a un indirizzo locale non raggiungibile dal container:\n\n${list}\n\n`
+      + 'Se il sito gira sulla tua macchina (es. un dev server), sostituisco "localhost"/"127.0.0.1" '
+      + 'con "host.docker.internal" (l\'host visto da dentro Docker) in tutte le URL del progetto. Continuare?'
+    );
+    if (!ok) return null;
+
+    const config = await api(`/api/projects/${slug}`);
+    for (const sc of config.scenarios) sc.url = replaceLocalHost(sc.url);
+    await api(`/api/projects/${slug}`, { method: 'PUT', body: JSON.stringify(config) });
+    render(); // la vista del progetto mostra ancora gli URL vecchi finché non si aggiorna
+    return true;
+  }
+
   async function launchRun(slug, command, scenarioLabel) {
-    const { run } = await api(`/api/projects/${slug}/runs`, {
-      method: 'POST',
-      body: JSON.stringify({ command, scenarioLabel }),
-    });
+    let run;
+    try {
+      ({ run } = await api(`/api/projects/${slug}/runs`, {
+        method: 'POST',
+        body: JSON.stringify({ command, scenarioLabel }),
+      }));
+    } catch (err) {
+      const fixed = await tryFixLocalhostAndRetry(slug, err);
+      if (!fixed) return;
+      ({ run } = await api(`/api/projects/${slug}/runs`, {
+        method: 'POST',
+        body: JSON.stringify({ command, scenarioLabel }),
+      }));
+    }
     watchRun(run);
     refreshHistory();
   }
