@@ -440,6 +440,7 @@
         </table></div>` : '<div class="empty">Nessuna pagina. Aggiungine una a mano o scoprile col crawler qui sotto.</div>'}
         <div class="section-actions">
           <button class="btn btn-primary" id="add-scenario">Aggiungi pagina</button>
+          <button class="btn btn-danger" id="del-all-scenarios" ${config.scenarios.length ? '' : 'disabled'}>Elimina tutti</button>
         </div>
       </section>
 
@@ -541,6 +542,12 @@
           saveConfig((cfg) => cfg.scenarios.splice(i, 1));
         }
       });
+    });
+
+    view.querySelector('#del-all-scenarios')?.addEventListener('click', () => {
+      if (confirm(`Rimuovere tutte le ${config.scenarios.length} pagine dal progetto?`)) {
+        saveConfig((cfg) => { cfg.scenarios = []; });
+      }
     });
 
     // --- crawler ---
