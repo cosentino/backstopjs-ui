@@ -1,5 +1,8 @@
 app/node_modules/
 
+# Generato da up.sh: contiene VRT_UID/VRT_GID della macchina host (per-macchina).
+.env
+
 # Output dei test: rigenerati a ogni run, non vanno versionati.
 data/projects/*/backstop_data/bitmaps_test/
 data/projects/*/backstop_data/html_report/
