@@ -26,6 +26,10 @@
       <div id="run-current" class="run-current">
         <p class="empty">Nessuna esecuzione in corso.</p>
       </div>
+      <div id="run-progress" class="run-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" hidden>
+        <div class="run-progress-track"><div id="run-progress-fill" class="run-progress-fill"></div></div>
+        <div id="run-progress-label" class="run-progress-label"></div>
+      </div>
       <pre id="run-log" class="run-log" aria-label="Log dell'esecuzione"></pre>
       <ol id="run-history" class="run-history"></ol>
     </aside>

@@ -53,6 +53,9 @@
   // ---------- pannello esecuzioni (globale) ----------
 
   const runCurrent = document.getElementById('run-current');
+  const runProgress = document.getElementById('run-progress');
+  const runProgressFill = document.getElementById('run-progress-fill');
+  const runProgressLabel = document.getElementById('run-progress-label');
   const runLog = document.getElementById('run-log');
   const runHistory = document.getElementById('run-history');
   let eventSource = null;
@@ -80,24 +83,87 @@
     </div>`;
   }
 
+  const WHEN_FMT = new Intl.DateTimeFormat('it-IT', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+
+  function fmtWhen(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '' : WHEN_FMT.format(d);
+  }
+
   async function refreshHistory() {
     try {
       const runs = await api('/api/runs');
       runHistory.innerHTML = runs
         .slice(0, 8)
-        .map((r) => `<li><span class="dot dot-${esc(r.status)}"></span><b>${esc(r.project)}</b> ${esc(COMMAND_LABEL[r.command] || r.command)}${r.filter ? ' (filtro)' : ''}</li>`)
+        .map((r) => `<li><span class="dot dot-${esc(r.status)}"></span><b>${esc(r.project)}</b> ${esc(COMMAND_LABEL[r.command] || r.command)}${r.filter ? ' (filtro)' : ''}<time class="run-when">${esc(fmtWhen(r.startedAt || r.createdAt))}</time></li>`)
         .join('');
     } catch { /* pannello secondario: niente toast */ }
+  }
+
+  // Avanzamento di reference/test ricavato dal log di BackstopJS: la riga
+  // "Selected N of M scenarios" dà gli scenari selezionati (rispetta il
+  // filtro), e ogni scatto acquisito emette una riga "x Close Browser".
+  // Scatti totali = scenari × viewport (il numero di viewport lo chiediamo
+  // alla config del progetto). approve non acquisisce nulla: barra assente.
+  function trackProgress(run) {
+    let scenarioCount = null;
+    let viewportCount = null;
+    let captured = 0;
+    let finished = false;
+
+    function draw() {
+      if (finished || (scenarioCount === null && captured === 0)) {
+        runProgress.hidden = true;
+        return;
+      }
+      runProgress.hidden = false;
+      const total = scenarioCount && viewportCount ? scenarioCount * viewportCount : null;
+      if (total) {
+        const done = Math.min(captured, total);
+        const pct = Math.round((done / total) * 100);
+        runProgressFill.classList.remove('is-indeterminate');
+        runProgressFill.style.width = pct + '%';
+        runProgressLabel.textContent = `${pct}% · ${done}/${total} schermate`;
+        runProgress.setAttribute('aria-valuenow', String(pct));
+      } else {
+        // Totale non ancora noto (viewport in arrivo): barra indeterminata.
+        runProgressFill.classList.add('is-indeterminate');
+        runProgressFill.style.width = '';
+        runProgressLabel.textContent = 'Acquisizione schermate…';
+        runProgress.removeAttribute('aria-valuenow');
+      }
+    }
+
+    // Numero di viewport dalla config del progetto (una sola richiesta).
+    api(`/api/projects/${run.project}`)
+      .then((cfg) => { viewportCount = Array.isArray(cfg.viewports) ? cfg.viewports.length : null; draw(); })
+      .catch(() => {});
+
+    draw();
+
+    return {
+      onLine(line) {
+        const sel = line.match(/Selected (\d+) of \d+ scenarios/);
+        if (sel) { scenarioCount = Number(sel[1]); captured = 0; draw(); return; }
+        if (line.includes('Close Browser')) { captured += 1; draw(); }
+      },
+      finish() { finished = true; draw(); },
+    };
   }
 
   function watchRun(run) {
     eventSource?.close();
     runLog.textContent = '';
     runCurrent.innerHTML = runLine(run);
+    const progress = trackProgress(run);
 
     eventSource = new EventSource(`/api/runs/${run.id}/log`);
     eventSource.addEventListener('log', (ev) => {
       const { line } = JSON.parse(ev.data);
+      progress.onLine(line);
       runLog.textContent += line + '\n';
       runLog.scrollTop = runLog.scrollHeight;
     });
@@ -105,6 +171,7 @@
       const { run: updated } = JSON.parse(ev.data);
       runCurrent.innerHTML = runLine(updated);
       if (updated.status === 'success' || updated.status === 'failed' || updated.status === 'cancelled') {
+        progress.finish();
         eventSource.close();
         refreshHistory();
         render(); // aggiorna badge/esiti della vista corrente
