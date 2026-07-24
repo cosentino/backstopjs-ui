@@ -135,6 +135,40 @@ test('update: normalizza id/paths, preserva campi sconosciuti, filtra selettori 
   assert.deepStrictEqual(reread, updated);
 });
 
+test('update: eliminare una pagina ripulisce i suoi bitmap, non quelli delle altre', () => {
+  const dir = tempDataDir();
+  const { slug } = createProject(dir, 'demo');
+  const base = getProject(dir, slug);
+
+  const withScenarios = updateProject(dir, slug, {
+    ...base,
+    scenarios: [
+      { label: 'Home', url: 'http://demo/' },
+      { label: 'Home Page', url: 'http://demo/altra' },
+    ],
+  });
+
+  const backstopData = path.join(dir, 'projects', slug, 'backstop_data');
+  const refDir = path.join(backstopData, 'bitmaps_reference');
+  const testDir = path.join(backstopData, 'bitmaps_test', '20260724-000000');
+  fs.mkdirSync(refDir, { recursive: true });
+  fs.mkdirSync(testDir, { recursive: true });
+
+  const homeFile = `${slug}_Home_0_document_0_mobile.png`;
+  const homePageFile = `${slug}_Home_Page_0_document_0_mobile.png`;
+  for (const dest of [refDir, testDir]) {
+    fs.writeFileSync(path.join(dest, homeFile), 'x');
+    fs.writeFileSync(path.join(dest, homePageFile), 'x');
+  }
+
+  updateProject(dir, slug, { ...withScenarios, scenarios: [{ label: 'Home Page', url: 'http://demo/altra' }] });
+
+  assert.strictEqual(fs.existsSync(path.join(refDir, homeFile)), false);
+  assert.strictEqual(fs.existsSync(path.join(testDir, homeFile)), false);
+  assert.strictEqual(fs.existsSync(path.join(refDir, homePageFile)), true);
+  assert.strictEqual(fs.existsSync(path.join(testDir, homePageFile)), true);
+});
+
 test('delete rimuove la cartella', () => {
   const dir = tempDataDir();
   const { slug } = createProject(dir, 'demo');

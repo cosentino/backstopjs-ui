@@ -206,10 +206,56 @@ function validateConfig(slug, config) {
   return config;
 }
 
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Replica la sanitizzazione che BackstopJS applica alla label per generare i
+// nomi dei bitmap (core/util/engineTools.js: makeSafe + strip finale).
+function labelToFileSafe(label) {
+  return String(label).replace(/[ /]/g, '_').replace(/[^a-z0-9_-]/gi, '');
+}
+
+// Rimuove gli screenshot (baseline e cronologia test) delle pagine eliminate.
+// I file sono nominati `${configId}_${labelSafe}_${selectorIndex}_...png`: il
+// suffisso "_\d+_" dopo la label evita falsi positivi quando una label è
+// prefisso di un'altra (es. "Home" vs "Home Page").
+function removeScenarioBitmaps(dataDir, slug, removedLabels) {
+  if (!removedLabels.length) return;
+  const base = path.join(projectDir(dataDir, slug), 'backstop_data');
+  const patterns = removedLabels.map(
+    (label) => new RegExp(`^${escapeRegExp(slug)}_${escapeRegExp(labelToFileSafe(label))}_\\d+_.+\\.(png|log\\.json)$`)
+  );
+  const matches = (name) => patterns.some((re) => re.test(name));
+
+  const purgeDir = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const name of fs.readdirSync(dir)) {
+      if (matches(name)) fs.rmSync(path.join(dir, name), { force: true });
+    }
+  };
+
+  purgeDir(path.join(base, 'bitmaps_reference'));
+
+  const testRoot = path.join(base, 'bitmaps_test');
+  if (fs.existsSync(testRoot)) {
+    for (const entry of fs.readdirSync(testRoot, { withFileTypes: true })) {
+      if (entry.isDirectory()) purgeDir(path.join(testRoot, entry.name));
+    }
+  }
+}
+
 function updateProject(dataDir, slug, config) {
-  readConfig(dataDir, slug); // 404 se non esiste
+  const previous = readConfig(dataDir, slug); // 404 se non esiste
   const validated = validateConfig(assertSafeSlug(slug), config);
   writeConfig(dataDir, slug, validated);
+
+  const nextLabels = new Set(validated.scenarios.map((sc) => sc.label));
+  const removedLabels = (previous.scenarios || [])
+    .map((sc) => sc.label)
+    .filter((label) => !nextLabels.has(label));
+  removeScenarioBitmaps(dataDir, slug, removedLabels);
+
   return validated;
 }
 
