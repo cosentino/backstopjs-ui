@@ -28,8 +28,22 @@ module.exports = async (page, scenario, viewport, isReference, browserContext) =
   //     Necessario perché le immagini dentro gli slider a scorrimento
   //     ORIZZONTALE non vengono intercettate dallo scroll verticale sotto,
   //     e lazysizes carica in modo asincrono: senza questo lo stato allo
-  //     scatto è non deterministico (card vuote vs piene).
+  //     scatto è non deterministico (card vuote vs piene, immagini clippate).
   await page.evaluate(() => {
+    // API ufficiale lazysizes: gestisce correttamente anche <picture>,
+    // <source data-srcset> e il plugin respimg. Più affidabile di uno swap
+    // manuale del solo attributo src.
+    if (window.lazySizes && typeof window.lazySizes.loadAll === 'function') {
+      window.lazySizes.loadAll();
+    }
+    // Fallback manuale (se lazysizes non è esposto su window): forza src/srcset
+    // su img e sui <source> interni ai <picture>.
+    document
+      .querySelectorAll('picture source[data-srcset], picture source[data-src]')
+      .forEach((source) => {
+        if (source.dataset.srcset) source.srcset = source.dataset.srcset;
+        if (source.dataset.src) source.src = source.dataset.src;
+      });
     document
       .querySelectorAll('img.lazyload, img[data-src], img[data-srcset]')
       .forEach((img) => {
@@ -76,18 +90,21 @@ module.exports = async (page, scenario, viewport, isReference, browserContext) =
   // 3. Aspetta i web font (evita lo shift di testo).
   await page.evaluate(() => document.fonts && document.fonts.ready);
 
-  // 4. Assesta l'header sticky: riporta a quota 0 e ri-emette lo scroll a 0
-  //    (così eventuali handler ricalcolano lo stato "in cima").
+  // 4. Assesta l'header sticky + forza il ricalcolo del layout degli slider.
+  //    Riporta a quota 0, ri-emette lo scroll a 0 (handler "in cima") e
+  //    dispatcha un resize: gli slider Splide/Swiper con autoHeight ri-misurano
+  //    l'altezza ORA che le immagini sono caricate, evitando slide clippate/
+  //    vuote (causa non deterministica dei diff su timeline/multistep/speaker).
   await page.evaluate(() => {
     window.scrollTo(0, 0);
     window.dispatchEvent(new Event('scroll'));
+    window.dispatchEvent(new Event('resize'));
   });
 
   // 5. Attendi che il browser abbia FINITO il rendering dopo lo scroll
-  //    down→up: aspetta che l'altezza della pagina smetta di cambiare per
-  //    alcuni frame consecutivi (le librerie di slider/lazyload ricalcolano
-  //    il layout in modo asincrono). Evita di scattare mentre la pagina è
-  //    ancora in assestamento — meccanismo generico, senza selettori.
+  //    down→up e il resize: aspetta che l'altezza della pagina smetta di
+  //    cambiare per alcuni frame consecutivi (slider/lazyload ricalcolano il
+  //    layout in modo asincrono). Meccanismo generico, senza selettori.
   await page.evaluate(() => new Promise((resolve) => {
     let last = -1;
     let stableFrames = 0;
@@ -105,6 +122,19 @@ module.exports = async (page, scenario, viewport, isReference, browserContext) =
     requestAnimationFrame(check);
   }));
 
-  // 6. Margine di sicurezza finale prima dello scatto.
+  // 6. Ri-attendi il completamento di TUTTE le immagini: il resize/refresh
+  //    degli slider può aver richiesto nuove sorgenti (srcset responsive)
+  //    che devono finire di caricare prima dello scatto.
+  await page.evaluate(() =>
+    Promise.all(
+      Array.from(document.images)
+        .filter((img) => !img.complete)
+        .map((img) => new Promise((res) => {
+          img.onload = img.onerror = res;
+        }))
+    )
+  );
+
+  // 7. Margine di sicurezza finale prima dello scatto.
   await new Promise((resolve) => setTimeout(resolve, 400));
 };
