@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { getLastResult } = require('../lib/results');
+const { getLastResult, clearLastResult } = require('../lib/results');
 
 const FIXTURE =
   'report({"testSuite":"BackstopJS","tests":[' +
@@ -42,4 +42,28 @@ test('getLastResult: file mancante → null', () => {
 test('getLastResult: file corrotto → null', () => {
   const dir = writeFixture('report({broken');
   assert.strictEqual(getLastResult(dir, 'x'), null);
+});
+
+test('clearLastResult: rimuove il report, getLastResult torna null', () => {
+  const dir = writeFixture(FIXTURE);
+  assert.ok(getLastResult(dir, 'x'));
+  clearLastResult(dir, 'x');
+  assert.strictEqual(getLastResult(dir, 'x'), null);
+  assert.strictEqual(
+    fs.existsSync(path.join(dir, 'projects', 'x', 'backstop_data', 'html_report')),
+    false
+  );
+  // La baseline non si tocca: rigenerarla è compito di BackstopJS.
+  assert.ok(fs.existsSync(path.join(dir, 'projects', 'x', 'backstop_data')));
+});
+
+test('clearLastResult: senza report non fa nulla', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vrt-res-'));
+  assert.doesNotThrow(() => clearLastResult(dir, 'x'));
+});
+
+test('clearLastResult: slug non valido → errore, nessuna cancellazione', () => {
+  const dir = writeFixture(FIXTURE);
+  assert.throws(() => clearLastResult(dir, '../../etc'), /Slug non valido/);
+  assert.ok(getLastResult(dir, 'x'));
 });

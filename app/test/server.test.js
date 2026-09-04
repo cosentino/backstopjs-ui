@@ -263,6 +263,55 @@ test("POST run approve promuove solo la pagina indicata", async () => {
   assert.match(text, /event: status/);
 });
 
+function writeReport(slug) {
+  const dir = path.join(dataDir, 'projects', slug, 'backstop_data', 'html_report');
+  fs.mkdirSync(dir, { recursive: true });
+  const tests = [
+    { pair: { label: 'Home', viewportLabel: 'mobile', diff: { misMatchPercentage: '7.81' } }, status: 'fail' },
+  ];
+  fs.writeFileSync(path.join(dir, 'config.js'), `report(${JSON.stringify({ tests })});`);
+  return dir;
+}
+
+test("POST run reference azzera l'esito dell'ultimo test", async () => {
+  const reportDir = writeReport('sito-test');
+  assert.strictEqual((await api('/api/projects/sito-test/result')).status, 200);
+
+  const res = await api('/api/projects/sito-test/runs', {
+    method: 'POST',
+    body: JSON.stringify({ command: 'reference' }),
+  });
+  assert.strictEqual(res.status, 202);
+
+  // Già sparito quando arriva la risposta: gli scenari possono essere
+  // cambiati e il confronto era contro la baseline che stiamo sostituendo.
+  assert.strictEqual(fs.existsSync(reportDir), false);
+  assert.strictEqual((await api('/api/projects/sito-test/result')).status, 404);
+
+  const list = await (await api('/api/projects')).json();
+  assert.strictEqual(list.find((p) => p.slug === 'sito-test').lastResult, null);
+
+  await waitRunDone((await res.json()).run.id);
+});
+
+test('POST run reference rifiutato (409) non tocca il report', async () => {
+  writeReport('sito-test');
+  const cfg = await (await api('/api/projects/sito-test')).json();
+  await api('/api/projects/sito-test', {
+    method: 'PUT',
+    body: JSON.stringify({ ...cfg, scenarios: [{ label: 'Locale', url: 'http://127.0.0.1:1/pagina' }] }),
+  });
+
+  const res = await api('/api/projects/sito-test/runs', {
+    method: 'POST',
+    body: JSON.stringify({ command: 'reference' }),
+  });
+  assert.strictEqual(res.status, 409);
+  assert.strictEqual((await api('/api/projects/sito-test/result')).status, 200, 'la baseline non è stata rigenerata');
+
+  await api('/api/projects/sito-test', { method: 'PUT', body: JSON.stringify(cfg) });
+});
+
 test('DELETE progetto → 204, poi GET → 404', async () => {
   const res = await api('/api/projects/sito-test', { method: 'DELETE' });
   assert.strictEqual(res.status, 204);

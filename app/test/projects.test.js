@@ -176,3 +176,79 @@ test('delete rimuove la cartella', () => {
   assert.throws(() => getProject(dir, slug), (err) => err.status === 404);
   assert.strictEqual(listProjects(dir).length, 0);
 });
+
+test('modalità discreta: attiva sui progetti nuovi, con il flag di lancio', () => {
+  const dir = tempDataDir();
+  createProject(dir, 'nuovo');
+  const cfg = getProject(dir, 'nuovo');
+  assert.strictEqual(cfg.stealth, true);
+  assert.ok(cfg.engineOptions.args.includes('--no-sandbox'));
+  assert.ok(cfg.engineOptions.args.includes('--disable-blink-features=AutomationControlled'));
+});
+
+test('modalità discreta: spegnerla toglie il flag, riaccenderla lo rimette', () => {
+  const dir = tempDataDir();
+  createProject(dir, 'p');
+  const cfg = getProject(dir, 'p');
+
+  const off = updateProject(dir, 'p', { ...cfg, stealth: false });
+  assert.strictEqual(off.stealth, false);
+  assert.ok(off.engineOptions.args.includes('--no-sandbox'));
+  assert.ok(!off.engineOptions.args.includes('--disable-blink-features=AutomationControlled'));
+  // e deve essere finita su disco, che è quello che legge BackstopJS
+  assert.strictEqual(getProject(dir, 'p').stealth, false);
+
+  const on = updateProject(dir, 'p', { ...off, stealth: true });
+  assert.deepStrictEqual(on.engineOptions.args, [
+    '--no-sandbox',
+    '--disable-blink-features=AutomationControlled',
+  ]);
+});
+
+test('modalità discreta: gli argomenti aggiunti a mano restano', () => {
+  const dir = tempDataDir();
+  createProject(dir, 'p');
+  const cfg = getProject(dir, 'p');
+  cfg.engineOptions = { args: ['--no-sandbox', '--proxy-server=http://proxy:8080'], headless: 'new' };
+
+  const saved = updateProject(dir, 'p', cfg);
+  assert.ok(saved.engineOptions.args.includes('--proxy-server=http://proxy:8080'));
+  assert.strictEqual(saved.engineOptions.headless, 'new');
+  // niente doppioni dopo più salvataggi
+  const again = updateProject(dir, 'p', saved);
+  assert.strictEqual(
+    again.engineOptions.args.filter((a) => a === '--no-sandbox').length,
+    1
+  );
+});
+
+test('progetto creato prima della modalità discreta: migrato in lettura', () => {
+  const dir = tempDataDir();
+  createProject(dir, 'vecchio');
+  const file = path.join(dir, 'projects', 'vecchio', 'backstop.json');
+  const legacy = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete legacy.stealth;
+  legacy.engineOptions = { args: ['--no-sandbox'] };
+  fs.writeFileSync(file, JSON.stringify(legacy, null, 2));
+
+  const cfg = getProject(dir, 'vecchio');
+  assert.strictEqual(cfg.stealth, true);
+  assert.ok(cfg.engineOptions.args.includes('--disable-blink-features=AutomationControlled'));
+  // riscritto su disco: il run legge il file, non l'oggetto in memoria
+  const onDisk = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.strictEqual(onDisk.stealth, true);
+  assert.ok(onDisk.engineOptions.args.includes('--disable-blink-features=AutomationControlled'));
+});
+
+test('backstop.json di sola lettura: la migrazione non impedisce di aprirlo', () => {
+  const dir = tempDataDir();
+  createProject(dir, 'readonly');
+  const file = path.join(dir, 'projects', 'readonly', 'backstop.json');
+  const legacy = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete legacy.stealth;
+  fs.writeFileSync(file, JSON.stringify(legacy, null, 2));
+  fs.chmodSync(file, 0o444);
+
+  const cfg = getProject(dir, 'readonly'); // non deve lanciare EACCES
+  assert.strictEqual(cfg.stealth, true);
+});

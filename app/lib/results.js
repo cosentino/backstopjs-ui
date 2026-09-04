@@ -1,6 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { assertSafeSlug } = require('./projects');
+
 // Cartella del report: i percorsi dentro config.js sono relativi a questa.
 function reportDir(dataDir, slug) {
   return path.join(dataDir, 'projects', slug, 'backstop_data', 'html_report');
@@ -41,4 +43,12 @@ function getLastResult(dataDir, slug) {
   }
 }
 
-module.exports = { getLastResult, readReport, reportDir };
+// Il report HTML è l'unica traccia dell'esito dell'ultimo test: dopo aver
+// rigenerato la baseline non descrive più niente di reale (gli scenari
+// possono essere cambiati, e comunque il confronto era contro immagini che
+// ora sono state sostituite). Lo rimuoviamo: lo riscrive il prossimo test.
+function clearLastResult(dataDir, slug) {
+  fs.rmSync(reportDir(dataDir, assertSafeSlug(slug)), { recursive: true, force: true });
+}
+
+module.exports = { getLastResult, readReport, reportDir, clearLastResult };

@@ -27,10 +27,16 @@ npm (express, cheerio): solo la prima volta.
   chiudere un banner cookie) e **aree da ignorare** (nascoste o rimosse).
 - **Crawler**: dai un URL di partenza e scopre le pagine dello stesso dominio;
   selezioni quelle da aggiungere al progetto.
+- **Modalità discreta** (attiva di default): nasconde al sito che le pagine
+  vengono aperte da un browser pilotato, per i siti dietro WAF/anti-bot che
+  altrimenti rispondono con una challenge o un 403 — vedi sotto.
 - **Viewport/breakpoint**: editor per definire a quali dimensioni catturare.
 - **Esecuzioni**: crea/aggiorna baseline, test completo, test o approvazione
   della singola pagina, approvazione di tutte le differenze. Log in diretta
   nel pannello a destra; un run alla volta (coda automatica).
+  Rigenerare la baseline azzera l'esito dell'ultimo test (conteggio, evidenza
+  delle pagine diverse e report): era un confronto contro immagini appena
+  sostituite, e nel frattempo le pagine possono essere cambiate di numero.
 - **Report BackstopJS**: diff affiancato, sovrapposto con scrubber e aree
   evidenziate — link "Apri report" o
   `http://localhost:3000/reports/<progetto>/backstop_data/html_report/index.html`.
@@ -46,6 +52,41 @@ npm (express, cheerio): solo la prima volta.
    differenze evidenziate.
 5. Se la modifica era voluta: **Approva tutte le differenze** → test di nuovo
    verde. Se era un bug: ripristina il CSS e rilancia il test.
+
+## Modalità discreta (siti dietro WAF/anti-bot)
+
+Un headless Chrome "nudo" si annuncia da solo: user agent con `HeadlessChrome`,
+`navigator.webdriver = true`, lingua `en-US` con fuso UTC, finestra più grande
+dello schermo. Molte protezioni rispondono con una challenge o un 403, e gli
+screenshot escono tutti uguali e inutili.
+
+La **modalità discreta** è attiva di default su ogni progetto (interruttore
+nella pagina del progetto, campo `stealth` nel `backstop.json`) e allinea la
+sessione a quella di un browser normale:
+
+- user agent senza `Headless`, con la versione reale del browser — anche nei
+  Client Hints (`sec-ch-ua`, `navigator.userAgentData`), che altrimenti
+  continuerebbero a dirlo su HTTPS;
+- `navigator.webdriver` a `false` (più `--disable-blink-features=AutomationControlled`
+  al lancio) e getter che restano `[native code]` all'ispezione;
+- lingua, `Accept-Language` e fuso coerenti fra loro (it-IT / Europe/Rome);
+- `Notification.permission` e `permissions.query` allineati su `default`;
+- schermo e dimensioni esterne della finestra coerenti col viewport;
+- header da browser vero anche sulle richieste del **crawler** (il `fetch` di
+  Node si presenta come `undici`, spesso già motivo di 403).
+
+Il codice sta in `data/engine_scripts/puppet/stealth.js`: valori e stringhe
+sono costanti in cima al file, facili da adattare (es. lingua e fuso diversi
+dall'italiano).
+
+Due avvertenze:
+
+- **Dopo aver acceso o spento l'opzione, rifai la baseline**: cambiando user
+  agent, lingua e fuso il sito può servire contenuti diversi, e il primo test
+  segnalerebbe differenze che non sono regressioni.
+- **Resta un segnale scoperto**: il Chromium dell'immagine BackstopJS non
+  espone WebGL (nessun flag lo riabilita), e un browser senza WebGL è
+  anomalo. Se un sito continua a bloccare, è il primo sospettato.
 
 ## URL raggiungibili dal motore
 
@@ -91,13 +132,13 @@ internet senza un reverse proxy con auth davanti.
 ├── up.sh / docker-compose.yml / Dockerfile
 ├── demo-site/                  # sito di prova (servito da nginx su :8081)
 ├── data/                       # fonte di verità (versionabile)
-│   ├── engine_scripts/puppet/  # hook Puppeteer (cookie, click…)
+│   ├── engine_scripts/puppet/  # hook Puppeteer (cookie, click, stealth…)
 │   └── projects/<slug>/backstop.json + backstop_data/
 └── app/                        # Node/Express, zero build step
     ├── server.js               # REST API + SSE + statici
     ├── lib/                    # projects, runner (coda), results, crawler
     ├── public/                 # SPA vanilla (index.html, app.js, style.css)
-    └── test/                   # unit test (node --test): 34 test
+    └── test/                   # unit test (node --test): 64 test
 ```
 
 API principali (usate dalla SPA, utilizzabili anche da script/CI):
@@ -121,3 +162,10 @@ Test unitari (serve Node ≥ 20 in locale): `cd app && npm test`.
   "rimuovi" o un'altezza fissa nel CSS del sito).
 - **Il run resta in coda** — c'è un altro run in corso: guarda il pannello
   Esecuzioni; la coda smaltisce da sola.
+- **Il sito risponde 403 / mostra una challenge invece della pagina** —
+  verifica che la modalità discreta sia attiva sul progetto (lo è di default).
+  Se non basta, i sospettati in ordine sono: WebGL assente nell'immagine
+  BackstopJS, la versione di Chromium dichiarata (120, quella dell'immagine
+  pinnata: un'immagine più recente dichiara una versione più credibile), il
+  rate limiting (abbassa `asyncCaptureLimit` nel `backstop.json`) e l'IP di
+  provenienza.

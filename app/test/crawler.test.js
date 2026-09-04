@@ -8,9 +8,11 @@ const { normalizeUrl, crawl } = require('../lib/crawler');
 // /slow non risponde mai (timeout); /image è content-type non HTML.
 let server;
 let base;
+let lastHeaders;
 
 before(async () => {
   server = http.createServer((req, res) => {
+    lastHeaders = req.headers;
     const pages = {
       '/': `<html><head><title>Pagina A</title></head><body>
         <a href="/b">B</a>
@@ -108,4 +110,18 @@ test('crawl: se "localhost" non risponde, ritenta trasparentemente su host.docke
   assert.strictEqual(calls.length, 2);
   assert.match(calls[0], /^http:\/\/localhost:9999\//);
   assert.match(calls[1], /^http:\/\/host\.docker\.internal:9999\//);
+});
+
+test('crawl: di default si presenta come un browser', async () => {
+  await crawl(base, { maxDepth: 0 });
+  assert.match(lastHeaders['user-agent'], /^Mozilla\/5\.0 .*Chrome\/[\d.]+ Safari/);
+  assert.ok(!/headless/i.test(lastHeaders['user-agent']));
+  assert.match(lastHeaders['accept-language'], /^it-IT/);
+  assert.match(lastHeaders.accept, /^text\/html/);
+});
+
+test('crawl: stealth false lascia gli header di Node', async () => {
+  await crawl(base, { maxDepth: 0, stealth: false });
+  assert.ok(!/Chrome/.test(lastHeaders['user-agent'] || ''));
+  assert.ok(!/^it-IT/.test(lastHeaders['accept-language'] || ''));
 });

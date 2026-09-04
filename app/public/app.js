@@ -241,6 +241,9 @@
     }
     watchRun(run);
     refreshHistory();
+    // La baseline azzera lato server l'esito dell'ultimo test: senza questo
+    // la vista continuerebbe a mostrare il vecchio conteggio per tutto il run.
+    if (command === 'reference') render();
   }
 
   // Al load: se c'è un run attivo, riaggancia il log
@@ -500,6 +503,25 @@
       </section>
 
       <section class="section">
+        <h2>Modalità discreta</h2>
+        <p class="hint">
+          Nasconde al sito che le pagine vengono aperte da un browser pilotato: user agent senza
+          «Headless», <span class="mono">navigator.webdriver</span> a false, lingua e fuso coerenti,
+          e header da browser vero anche per il crawler. Serve quando un WAF risponde con una
+          challenge o un 403 invece che con la pagina.
+        </p>
+        <label class="toggle">
+          <input type="checkbox" id="stealth-toggle" ${config.stealth ? 'checked' : ''}>
+          <span>Maschera l'automazione del browser</span>
+        </label>
+        <p class="hint">
+          Cambia il modo in cui il sito viene richiesto (user agent, lingua, fuso): dopo aver
+          attivato o spento questa opzione rifai la baseline, altrimenti il primo test può
+          segnalare differenze che non sono regressioni.
+        </p>
+      </section>
+
+      <section class="section">
         <h2>Pagine sotto controllo (${config.scenarios.length})</h2>
         ${config.scenarios.length ? `<div class="table-wrap"><table class="scenarios-table">
           <thead><tr><th>Nome</th><th>URL</th><th>Ignorati</th><th>Azioni</th></tr></thead>
@@ -568,6 +590,12 @@
       saveConfig((cfg) => { cfg.pageDefaults = next; });
     });
 
+    // --- modalità discreta ---
+    view.querySelector('#stealth-toggle').addEventListener('change', (ev) => {
+      const enabled = ev.target.checked;
+      saveConfig((cfg) => { cfg.stealth = enabled; });
+    });
+
     // --- scenari ---
     view.querySelector('#add-scenario').addEventListener('click', () => {
       openScenarioDialog(null, defaults, (scenario) => {
@@ -626,7 +654,11 @@
       try {
         const { pages, truncated } = await api('/api/crawl', {
           method: 'POST',
-          body: JSON.stringify({ url: data.get('url'), maxPages: Number(data.get('maxPages')) }),
+          body: JSON.stringify({
+            url: data.get('url'),
+            maxPages: Number(data.get('maxPages')),
+            stealth: config.stealth,
+          }),
         });
         const known = new Set(config.scenarios.map((s) => s.url));
         const fresh = pages.filter((p) => !known.has(p.url));

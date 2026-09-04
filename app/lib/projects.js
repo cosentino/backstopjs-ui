@@ -50,6 +50,33 @@ function canonicalPaths(slug) {
   };
 }
 
+// Argomenti Chromium sempre presenti: senza --no-sandbox il browser non parte
+// dentro il container.
+const BASE_ENGINE_ARGS = ['--no-sandbox'];
+
+// Argomento aggiunto in modalità discreta. È l'unica contromisura possibile a
+// livello di lancio del browser: senza, Blink si dichiara "controllato da
+// automazione" (navigator.webdriver = true) prima ancora che gli script di
+// engine possano intervenire. Il resto del mascheramento sta in
+// data/engine_scripts/puppet/stealth.js.
+const STEALTH_ENGINE_ARGS = ['--disable-blink-features=AutomationControlled'];
+
+// Allinea engineOptions.args al valore di config.stealth, preservando gli
+// argomenti aggiunti a mano nel backstop.json.
+function applyEngineArgs(config) {
+  const engineOptions =
+    config.engineOptions && typeof config.engineOptions === 'object' ? config.engineOptions : {};
+  const existing = Array.isArray(engineOptions.args) ? engineOptions.args : [];
+  const args = existing.filter(
+    (arg) => !STEALTH_ENGINE_ARGS.includes(arg) && !BASE_ENGINE_ARGS.includes(arg)
+  );
+  config.engineOptions = {
+    ...engineOptions,
+    args: [...BASE_ENGINE_ARGS, ...(config.stealth ? STEALTH_ENGINE_ARGS : []), ...args],
+  };
+  return config;
+}
+
 function defaultPageDefaults() {
   return {
     delay: 300,
@@ -60,7 +87,7 @@ function defaultPageDefaults() {
 }
 
 function newProjectConfig(slug) {
-  return {
+  return applyEngineArgs({
     id: slug,
     viewports: [
       { label: 'mobile', width: 375, height: 667 },
@@ -74,12 +101,13 @@ function newProjectConfig(slug) {
     paths: canonicalPaths(slug),
     report: ['browser'],
     engine: 'puppeteer',
-    engineOptions: { args: ['--no-sandbox'] },
+    stealth: true,
+    engineOptions: {},
     asyncCaptureLimit: 5,
     asyncCompareLimit: 50,
     debug: false,
     debugWindow: false,
-  };
+  });
 }
 
 function readConfig(dataDir, slug) {
@@ -87,7 +115,29 @@ function readConfig(dataDir, slug) {
   if (!fs.existsSync(file)) {
     throw httpError(404, `Progetto "${slug}" non trovato`);
   }
-  return JSON.parse(fs.readFileSync(file, 'utf8'));
+  return migrateConfig(dataDir, slug, JSON.parse(fs.readFileSync(file, 'utf8')));
+}
+
+// I progetti creati prima della modalità discreta non hanno il campo
+// "stealth": glielo aggiungiamo (attivo) e proviamo a riscrivere il file,
+// perché il flag di lancio del browser sta nel backstop.json su disco — non
+// nell'oggetto in memoria — ed è quello che legge BackstopJS durante un run.
+//
+// La riscrittura è best-effort: un backstop.json di sola lettura (capita con
+// i progetti copiati da altri, con proprietario diverso dall'utente del
+// container) non deve impedire di APRIRE il progetto. Anche senza il flag di
+// lancio il mascheramento resta attivo, perché onBefore.js considera discreta
+// ogni config che non dica esplicitamente stealth: false.
+function migrateConfig(dataDir, slug, config) {
+  if (typeof config.stealth === 'boolean') return config;
+  config.stealth = true;
+  applyEngineArgs(config);
+  try {
+    writeConfig(dataDir, slug, config);
+  } catch {
+    // sola lettura: teniamo la migrazione solo in memoria
+  }
+  return config;
 }
 
 function writeConfig(dataDir, slug, config) {
@@ -161,6 +211,10 @@ function validateConfig(slug, config) {
   }
 
   config.pageDefaults = validatePageDefaults(config.pageDefaults);
+  // Assente = attiva: la modalità discreta è il default, si spegne solo
+  // scrivendo esplicitamente false.
+  config.stealth = config.stealth !== false;
+  applyEngineArgs(config);
 
   if (!Array.isArray(config.viewports) || config.viewports.length === 0) {
     throw httpError(400, 'Serve almeno un viewport');

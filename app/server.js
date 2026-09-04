@@ -3,7 +3,7 @@ const express = require('express');
 
 const projects = require('./lib/projects');
 const { createRunner, escapeFilter } = require('./lib/runner');
-const { getLastResult } = require('./lib/results');
+const { getLastResult, clearLastResult } = require('./lib/results');
 const { approveLastTest, formatApproveLog } = require('./lib/approve');
 const { crawl } = require('./lib/crawler');
 const { findUnreachableLocalScenarios } = require('./lib/reachability');
@@ -95,6 +95,13 @@ function createApp({ dataDir, runner }) {
         });
       }
 
+      // Rigenerare la baseline invalida l'esito dell'ultimo test: gli scenari
+      // possono essere cambiati (quindi anche il totale) e il confronto era
+      // comunque contro immagini che stiamo per sostituire. Azzeriamo qui,
+      // dopo i controlli che possono rifiutare il run, così contatore e badge
+      // non restano appesi a un risultato che non descrive più niente.
+      if (command === 'reference') clearLastResult(dataDir, req.params.slug);
+
       const filter = scenarioLabel ? escapeFilter(scenarioLabel) : rawFilter || null;
       const run = runner.enqueue({ project: req.params.slug, command, filter });
       res.status(202).json({ run });
@@ -166,9 +173,11 @@ function createApp({ dataDir, runner }) {
   // Express 4 non propaga i reject degli handler async: serve try/next.
   app.post('/api/crawl', async (req, res, next) => {
     try {
-      const { url, maxPages } = req.body || {};
+      const { url, maxPages, stealth } = req.body || {};
       const result = await crawl(url, {
         maxPages: Number.isInteger(maxPages) && maxPages > 0 ? Math.min(maxPages, 100) : 30,
+        // Come per gli screenshot: discreto salvo richiesta esplicita.
+        stealth: stealth !== false,
       });
       res.json(result);
     } catch (err) {
