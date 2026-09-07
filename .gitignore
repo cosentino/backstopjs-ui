@@ -15,3 +15,5 @@ data/projects/*/backstop_data/ci_report/
 # PER EVITARE COMMITTARE COSE SPECIFICHE DI PROGETTO 
 # E PER EVITARE DI APPESANTIRE IL REPOSITORY GIT
 data/projects
+
+muted/**
