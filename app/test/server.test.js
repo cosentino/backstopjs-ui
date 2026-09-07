@@ -332,3 +332,62 @@ test('la UI statica è servita su /', async () => {
   assert.strictEqual(res.status, 200);
   assert.match(res.headers.get('content-type'), /text\/html/);
 });
+
+// Chi si collega al log di un run già avviato deve ricevere subito lo stato
+// corrente: l'evento 'status' di passaggio a running viene emesso su
+// setImmediate, quindi prima che il browser faccia in tempo ad aprire la SSE.
+// Senza un invio iniziale il pannello resta fermo su "in coda" per tutto il run.
+test('SSE di un run in corso: status iniziale con lo stato corrente', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vrt-sse-'));
+  fs.mkdirSync(path.join(dir, 'projects', 'lento'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'projects', 'lento', 'backstop.json'),
+    JSON.stringify({ id: 'lento', viewports: [], scenarios: [{ label: 'Home', url: 'http://demo/' }] }));
+
+  const cmd = path.join(dir, 'sleep-cmd.sh');
+  fs.writeFileSync(cmd, '#!/bin/sh\nsleep 30\n');
+  fs.chmodSync(cmd, 0o755);
+
+  const runner = createRunner({ dataDir: dir, backstopCmd: cmd });
+  const srv = createApp({ dataDir: dir, runner }).listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
+  const at = `http://127.0.0.1:${srv.address().port}`;
+
+  try {
+    const res = await fetch(`${at}/api/projects/lento/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'test' }),
+    });
+    const { run } = await res.json();
+    assert.strictEqual(run.status, 'queued', 'la POST risponde prima dell\'avvio');
+
+    // il worker parte su setImmediate: attendo che il run sia davvero in corso
+    const deadline = Date.now() + 3000;
+    while (runner.get(run.id).status !== 'running' && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.strictEqual(runner.get(run.id).status, 'running');
+
+    // ora mi collego, come farebbe il browser: devo vedere lo stato corrente
+    const ctrl = new AbortController();
+    const sse = await fetch(`${at}/api/runs/${run.id}/log`, { signal: ctrl.signal });
+    const reader = sse.body.getReader();
+    let buf = '';
+    const stop = setTimeout(() => ctrl.abort(), 2000);
+    try {
+      while (!/event: status/.test(buf)) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += Buffer.from(value).toString();
+      }
+    } catch { /* abort: nessuno status arrivato */ }
+    clearTimeout(stop);
+    ctrl.abort();
+
+    assert.match(buf, /event: status/, 'nessun evento status per un run in corso');
+    assert.match(buf, /"status":"running"/, 'lo status inviato non è quello corrente');
+  } finally {
+    runner.cancel(runner.list()[0].id);
+    srv.close();
+  }
+});

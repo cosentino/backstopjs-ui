@@ -127,8 +127,8 @@ function createApp({ dataDir, runner }) {
     res.json({ run });
   });
 
-  // Log live via Server-Sent Events. Se il run è già concluso: replay del log,
-  // evento status e chiusura dello stream.
+  // Log live via Server-Sent Events: replay del log accumulato, stato corrente,
+  // poi gli aggiornamenti. Se il run è già concluso lo stream si chiude subito.
   app.get('/api/runs/:id/log', (req, res) => {
     const run = runner.get(req.params.id);
     if (!run) throw projects.httpError(404, 'Run non trovato');
@@ -148,9 +148,14 @@ function createApp({ dataDir, runner }) {
       if (line.trim() !== '') send('log', { line });
     }
 
+    // Stato corrente subito dopo il replay. Il passaggio a 'running' viene
+    // emesso su setImmediate, cioè di norma prima che il client faccia in
+    // tempo ad aprire lo stream: senza questo invio il pannello resterebbe
+    // fermo sullo stato 'queued' della risposta alla POST per tutto il run.
+    const { log, ...meta } = run;
+    send('status', { run: meta });
+
     if (TERMINAL_STATUSES.includes(run.status)) {
-      const { log, ...meta } = run;
-      send('status', { run: meta });
       res.end();
       return;
     }
