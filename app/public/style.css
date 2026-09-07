@@ -701,6 +701,101 @@ table.scenarios-table td.truncate {
   .shots { grid-template-columns: 1fr; max-height: none; }
 }
 
+/* ---------- confronto sovrapposto (scrubber) ---------- */
+
+.view-switch { display: flex; }
+.view-switch .btn { border-radius: 0; padding: 0.25rem 0.6rem; font-size: 0.7rem; }
+.view-switch .btn:first-child { border-radius: 3px 0 0 3px; }
+.view-switch .btn:last-child { border-radius: 0 3px 3px 0; margin-left: -1px; }
+.view-switch .btn[aria-pressed="true"] {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+  position: relative;
+}
+
+/* Baseline e ultimo test impilati: il cursore scopre l'uno o l'altro.
+   touch-action pan-y perché il trascinamento orizzontale è lo scrubber,
+   mentre in verticale si deve poter scorrere l'immagine. */
+.scrub {
+  --pos: 50%;
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--checker);
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.scrub-scroll { max-height: 62vh; overflow-y: auto; overflow-x: hidden; }
+/* max-content + max-width: uno scatto desktop si riduce alla larghezza della
+   modale, uno mobile resta alla sua e si centra invece di essere stirato. */
+.scrub-stack { position: relative; width: max-content; max-width: 100%; margin: 0 auto; }
+.scrub-stack img { display: block; max-width: 100%; width: auto; height: auto; background: #fff; }
+/* clip-path invece di una larghezza: l'immagine sopra resta larga quanto la
+   sotto, quindi le due combaciano pixel per pixel a ogni posizione. */
+.scrub-top { position: absolute; inset: 0; clip-path: inset(0 calc(100% - var(--pos)) 0 0); }
+
+.scrub-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--handle-x, 50%);
+  width: 2px;
+  margin-left: -1px;
+  background: var(--diff);
+  cursor: col-resize;
+  z-index: 2;
+}
+.scrub-handle::after {
+  content: '⇔';
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  background: var(--diff);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 0.75rem;
+}
+.scrub-handle:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.scrub.is-dragging { user-select: none; }
+
+.scrub-tag {
+  position: absolute;
+  bottom: 10px;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: rgba(22, 24, 29, 0.78);
+  color: #fff;
+  padding: 0.15rem 0.45rem;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1;
+}
+.scrub-tag-left { left: 10px; }
+.scrub-tag-right { right: 10px; }
+
+.scrub-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+.scrub-pick input { width: auto; margin: 0; }
+.scrub-pick input:disabled { cursor: not-allowed; }
+.scrub-pick:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
+
 /* ---------- anteprima al passaggio del mouse ---------- */
 
 .shot-preview {

@@ -161,9 +161,119 @@
     return `<figure><figcaption>${esc(caption)}</figcaption>${body}</figure>`;
   }
 
+  // Confronto sovrapposto: baseline e ultimo test impilati, con un cursore da
+  // trascinare che scopre l'uno o l'altro (lo scrubber del report BackstopJS).
+  // Alla larghezza piena della modale gli scatti si leggono davvero, cosa che
+  // affiancati in tre colonne non succede.
+  function scrubPane(slug, entry) {
+    const ref = entry.images?.reference;
+    const test = entry.images?.test;
+    if (!ref || !test) {
+      return '<div class="shot-missing">confronto non disponibile: manca la baseline o lo scatto</div>';
+    }
+    const diff = entry.images?.diff;
+    return `<div class="scrub" data-pos="50">
+      <div class="scrub-scroll">
+        <div class="scrub-stack">
+          <img alt="Baseline" src="${esc(reportAsset(slug, ref))}">
+          <div class="scrub-top">
+            <img alt="Ultimo test" src="${esc(reportAsset(slug, test))}"
+              data-test-src="${esc(reportAsset(slug, test))}"
+              data-diff-src="${diff ? esc(reportAsset(slug, diff)) : ''}">
+          </div>
+        </div>
+      </div>
+      <span class="scrub-tag scrub-tag-left">baseline</span>
+      <span class="scrub-tag scrub-tag-right">ultimo test</span>
+      <div class="scrub-handle" role="slider" tabindex="0" aria-label="Cursore di confronto"
+        aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"></div>
+    </div>`;
+  }
+
+  // Il cursore vive fuori dal contenitore che scorre (altrimenti sparirebbe
+  // scorrendo l'immagine): la sua posizione va quindi in pixel, misurata sullo
+  // stack, perché la percentuale di .scrub comprenderebbe la barra di scorrimento.
+  function setScrub(scrub, pct) {
+    const pos = Math.min(100, Math.max(0, pct));
+    const stack = scrub.querySelector('.scrub-stack').getBoundingClientRect();
+    const box = scrub.getBoundingClientRect();
+    scrub.style.setProperty('--pos', `${pos}%`);
+    // Lo stack può essere più stretto e centrato (scatti mobile): la maniglia
+    // segue il suo bordo sinistro, non quello del pannello.
+    scrub.style.setProperty('--handle-x', `${stack.left - box.left + (stack.width * pos) / 100}px`);
+    scrub.querySelector('.scrub-handle').setAttribute('aria-valuenow', String(Math.round(pos)));
+    scrub.dataset.pos = String(pos);
+  }
+
+  function syncScrubs() {
+    resultBody.querySelectorAll('.scrub').forEach((s) => setScrub(s, Number(s.dataset.pos) || 50));
+  }
+  window.addEventListener('resize', () => { if (resultDialog.open) syncScrubs(); });
+  // Finché l'immagine non è caricata lo stack non ha larghezza: si riallinea
+  // quando arriva (load non fa bubbling, serve la fase di cattura).
+  resultBody.addEventListener('load', (ev) => {
+    const scrub = ev.target.closest?.('.scrub');
+    if (scrub) setScrub(scrub, Number(scrub.dataset.pos) || 50);
+  }, true);
+
+  resultBody.addEventListener('pointerdown', (ev) => {
+    const scrub = ev.target.closest('.scrub');
+    if (!scrub || ev.button !== 0) return;
+    const rect = scrub.querySelector('.scrub-stack').getBoundingClientRect();
+    const moveTo = (e) => setScrub(scrub, ((e.clientX - rect.left) / rect.width) * 100);
+    const stop = () => {
+      scrub.removeEventListener('pointermove', moveTo);
+      scrub.removeEventListener('pointerup', stop);
+      scrub.removeEventListener('pointercancel', stop);
+      scrub.classList.remove('is-dragging');
+    };
+    try { scrub.setPointerCapture(ev.pointerId); } catch { /* si trascina comunque, ma solo dentro il pannello */ }
+    scrub.addEventListener('pointermove', moveTo);
+    scrub.addEventListener('pointerup', stop);
+    scrub.addEventListener('pointercancel', stop);
+    scrub.classList.add('is-dragging');
+    scrub.querySelector('.scrub-handle').focus();
+    moveTo(ev);
+    ev.preventDefault(); // niente selezione del testo né drag nativo dell'immagine
+  });
+
+  // Frecce sul cursore: fermate qui, altrimenti la modale cambierebbe pagina.
+  resultBody.addEventListener('keydown', (ev) => {
+    const handle = ev.target.closest('.scrub-handle');
+    if (!handle) return;
+    const scrub = handle.closest('.scrub');
+    const pos = Number(scrub.dataset.pos) || 50;
+    const step = ev.shiftKey ? 10 : 2;
+    const next = { ArrowLeft: pos - step, ArrowRight: pos + step, Home: 0, End: 100 }[ev.key];
+    if (next === undefined) return;
+    setScrub(scrub, next);
+    ev.preventDefault();
+    ev.stopPropagation();
+  });
+
+  // Sopra la baseline si può mettere lo scatto o il diff: vederlo scorrere sul
+  // riferimento dice subito se il magenta copre una regressione o un dettaglio.
+  resultBody.addEventListener('change', (ev) => {
+    const pick = ev.target.closest('[data-scrub-diff]');
+    if (!pick) return;
+    const section = pick.closest('.vp-result');
+    const img = section.querySelector('.scrub-top img');
+    img.src = pick.checked ? img.dataset.diffSrc : img.dataset.testSrc;
+    section.querySelector('.scrub-tag-right').textContent = pick.checked ? 'differenze' : 'ultimo test';
+  });
+
   // Dalla modale si scorrono le pagine dell'ultimo test senza tornare alla
   // tabella: qui restano l'elenco su cui si naviga e la posizione corrente.
   const resultNav = { slug: null, items: [], index: 0 };
+  let shotView = 'side'; // 'side' = tre colonne affiancate, 'scrub' = sovrapposte
+
+  document.querySelectorAll('.view-switch [data-view]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (shotView === btn.dataset.view) return;
+      shotView = btn.dataset.view;
+      drawResult();
+    });
+  });
 
   function drawResult() {
     const { slug, items, index } = resultNav;
@@ -194,6 +304,10 @@
     // vanno per primi, gli altri restano nell'ordine della configurazione.
     const ordered = [...entries].sort((a, b) => (b.status === 'fail') - (a.status === 'fail'));
 
+    document.querySelectorAll('.view-switch [data-view]').forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(btn.dataset.view === shotView));
+    });
+
     resultBody.innerHTML = ordered.map((e) => `
       <section class="vp-result">
         <div class="vp-result-head">
@@ -201,14 +315,19 @@
           ${e.status === 'fail'
             ? `<span class="badge badge-sm badge-fail">${esc(e.misMatchPercentage ?? '?')}% diverso</span>`
             : '<span class="badge badge-sm badge-pass">nessuna differenza</span>'}
+          ${shotView === 'scrub' ? `<label class="scrub-pick">
+            <input type="checkbox" data-scrub-diff ${e.images?.diff ? '' : 'disabled'}>
+            sovrapponi il diff
+          </label>` : ''}
         </div>
-        <div class="shots">
+        ${shotView === 'scrub' ? scrubPane(slug, e) : `<div class="shots">
           ${shotFigure('Baseline', slug, e.images?.reference, 'baseline non disponibile')}
           ${shotFigure('Ultimo test', slug, e.images?.test, 'scatto non disponibile')}
           ${shotFigure('Differenze', slug, e.images?.diff, e.status === 'fail' ? 'diff non disponibile' : 'nessuna differenza')}
-        </div>
+        </div>`}
       </section>`).join('');
     resultBody.scrollTop = 0;
+    if (shotView === 'scrub') requestAnimationFrame(syncScrubs);
   }
 
   function stepResult(delta) {
