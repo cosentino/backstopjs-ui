@@ -267,6 +267,26 @@
   const resultNav = { slug: null, items: [], index: 0 };
   let shotView = 'side'; // 'side' = tre colonne affiancate, 'scrub' = sovrapposte
 
+  // Quanto spazio dare al confronto dipende dallo schermo, non da cosa si sta
+  // guardando: a differenza della vista, questa scelta si ricorda tra sessioni.
+  const FULL_KEY = 'backstopui.resultFull';
+  const fullBtn = document.getElementById('result-full');
+
+  function setResultFull(full) {
+    resultDialog.classList.toggle('is-full', full);
+    fullBtn.setAttribute('aria-pressed', String(full));
+    fullBtn.textContent = full ? '⤡' : '⤢';
+    const label = full ? 'Riporta alla dimensione normale' : 'Estendi a tutta la pagina';
+    fullBtn.title = label;
+    fullBtn.setAttribute('aria-label', label);
+    writePref(FULL_KEY, full ? '1' : '0');
+    // Cambia la larghezza degli scatti: i cursori di confronto vanno riallineati.
+    if (resultDialog.open) syncScrubs();
+  }
+
+  setResultFull(readPref(FULL_KEY, '0') === '1');
+  fullBtn.addEventListener('click', () => setResultFull(!resultDialog.classList.contains('is-full')));
+
   document.querySelectorAll('.view-switch [data-view]').forEach((btn) => {
     btn.addEventListener('click', () => {
       if (shotView === btn.dataset.view) return;

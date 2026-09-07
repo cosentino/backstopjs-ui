@@ -603,6 +603,28 @@ table.scenarios-table td.truncate {
    display:none che il browser applica alla dialog chiusa, lasciandola a video. */
 .dialog-wide { width: min(1500px, 96vw); max-height: 92vh; }
 .dialog-wide[open] { display: flex; flex-direction: column; }
+
+/* A tutta pagina: inset+margin invece di 100vw/100vh, che includerebbero la
+   barra di scorrimento e farebbero traboccare la modale di lato. */
+.dialog-wide.is-full {
+  inset: 0;
+  margin: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  padding: 0.9rem 1.1rem;
+}
+.dialog-wide.is-full .shots { max-height: 76vh; }
+.dialog-wide.is-full .scrub-scroll { max-height: 80vh; }
+
+.btn-icon {
+  padding: 0.15rem 0.55rem;
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+.btn-icon[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
 .result-head {
   display: flex;
   align-items: center;
