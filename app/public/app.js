@@ -42,12 +42,196 @@
     return `/reports/${slug}/backstop_data/html_report/index.html`;
   }
 
+  // Le immagini del report stanno sotto /reports/<slug>/: i nomi file generati
+  // da BackstopJS contengono il label dello scenario, quindi vanno codificati.
+  function reportAsset(slug, relPath) {
+    const parts = relPath.split('/').map(encodeURIComponent).join('/');
+    return `/reports/${encodeURIComponent(slug)}/${parts}`;
+  }
+
+  // Gli URL degli scenari sono scritti dal punto di vista del container, che è
+  // chi apre davvero le pagine: "host.docker.internal" è la macchina host e il
+  // sito demo del compose risponde su "demo". Per aprirli nel browser
+  // dell'utente vanno riportati alla vista dell'host.
+  function browserUrl(url) {
+    try {
+      const u = new URL(url);
+      if (u.hostname === 'host.docker.internal') u.hostname = 'localhost';
+      else if (u.hostname === 'demo' && !u.port) { u.hostname = 'localhost'; u.port = '8081'; }
+      return u.href;
+    } catch {
+      return url;
+    }
+  }
+
+  // Preferenze di sola interfaccia (pannelli aperti, colonna esecuzioni):
+  // localStorage può mancare o lanciare, e in quel caso si usano i default.
+  function readPref(key, fallback) {
+    try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+  }
+  function writePref(key, value) {
+    try { localStorage.setItem(key, value); } catch { /* niente da fare */ }
+  }
+
+  // I pannelli di configurazione partono chiusi a ogni caricamento, ma la vista
+  // si ridisegna a ogni salvataggio: senza tenerne memoria qui, modificare un
+  // viewport richiuderebbe il pannello in cui si sta lavorando.
+  const panelOpen = { config: false, crawler: false };
+  function isPanelOpen(name) { return panelOpen[name] === true; }
+  function setPanelOpen(name, open) { panelOpen[name] = open; }
+
   function badge(lastResult) {
     if (!lastResult) return '<span class="badge badge-none">mai testato</span>';
     const { passed, failed, total } = lastResult.summary;
     return failed > 0
       ? `<span class="badge badge-fail">${failed}/${total} diversi</span>`
       : `<span class="badge badge-pass">${passed}/${total} ok</span>`;
+  }
+
+  // ---------- esito di una pagina: anteprima e confronto ----------
+
+  // Fra le prove di una pagina (una per viewport) l'anteprima mostra la prima
+  // che ha differenze: è quella che si vuole vedere. Se sono tutte a posto va
+  // bene la prima, tanto sono uguali alla baseline.
+  function pickEntry(entries) {
+    return entries.find((e) => e.status === 'fail') || entries[0];
+  }
+
+  // Il diff (magenta sulle aree cambiate) racconta l'esito meglio dello scatto;
+  // se manca — test passato, o report vecchio — si ripiega sullo scatto.
+  function entryImage(entry) {
+    return entry.images?.diff || entry.images?.test || entry.images?.reference || null;
+  }
+
+  const shotPreview = document.getElementById('shot-preview');
+  let previewTimer = null;
+
+  function hidePreview() {
+    clearTimeout(previewTimer);
+    shotPreview.hidden = true;
+    shotPreview.innerHTML = '';
+  }
+
+  // Il riquadro è ancorato allo schermo: scorrendo resterebbe fermo mentre la
+  // riga a cui si riferisce se ne va.
+  window.addEventListener('scroll', () => { if (!shotPreview.hidden) hidePreview(); }, { passive: true });
+
+  function placePreview(x, y) {
+    const gap = 16;
+    const pad = 10;
+    const box = shotPreview.getBoundingClientRect();
+    let left = x + gap;
+    let top = y + gap;
+    if (left + box.width > window.innerWidth - pad) left = x - box.width - gap;
+    if (top + box.height > window.innerHeight - pad) top = window.innerHeight - box.height - pad;
+    shotPreview.style.left = `${Math.max(pad, left)}px`;
+    shotPreview.style.top = `${Math.max(pad, top)}px`;
+  }
+
+  // L'anteprima parte in ritardo: passando il mouse sulla tabella per arrivare
+  // a un bottone non deve aprirsi e chiudersi a ogni riga attraversata.
+  function schedulePreview(slug, entries, x, y) {
+    clearTimeout(previewTimer);
+    const entry = pickEntry(entries);
+    const image = entryImage(entry);
+    if (!image) return;
+    previewTimer = setTimeout(() => {
+      const diff = entry.status === 'fail'
+        ? `${entry.misMatchPercentage ?? '?'}% diverso`
+        : 'nessuna differenza';
+      shotPreview.innerHTML = `<img alt="" src="${esc(reportAsset(slug, image))}">
+        <div class="shot-preview-cap"><b>${esc(entry.viewport || '')}</b> · ${esc(diff)}</div>`;
+      shotPreview.hidden = false;
+      placePreview(x, y);
+      // L'immagine arriva dopo: a quel punto il riquadro ha la sua dimensione
+      // vera e va riposizionato, altrimenti esce dallo schermo.
+      shotPreview.querySelector('img').addEventListener('load', () => placePreview(x, y), { once: true });
+    }, 180);
+  }
+
+  const resultDialog = document.getElementById('result-dialog');
+  const resultBody = document.getElementById('result-body');
+  document.getElementById('result-close').addEventListener('click', () => resultDialog.close());
+  resultDialog.addEventListener('close', () => { resultBody.innerHTML = ''; });
+
+  function shotFigure(caption, slug, relPath, missing) {
+    const body = relPath
+      ? `<img loading="lazy" alt="${esc(caption)}" src="${esc(reportAsset(slug, relPath))}">`
+      : `<div class="shot-missing">${esc(missing)}</div>`;
+    return `<figure><figcaption>${esc(caption)}</figcaption>${body}</figure>`;
+  }
+
+  // Dalla modale si scorrono le pagine dell'ultimo test senza tornare alla
+  // tabella: qui restano l'elenco su cui si naviga e la posizione corrente.
+  const resultNav = { slug: null, items: [], index: 0 };
+
+  function drawResult() {
+    const { slug, items, index } = resultNav;
+    const { scenario, entries } = items[index];
+    const failed = entries.filter((e) => e.status === 'fail').length;
+    const open = browserUrl(scenario.url);
+
+    document.getElementById('result-title').textContent = scenario.label;
+    const urlLink = document.getElementById('result-url');
+    urlLink.textContent = scenario.url;
+    urlLink.href = open;
+    urlLink.title = open === scenario.url
+      ? `Apri ${scenario.url} in una nuova scheda`
+      : `Apri ${scenario.url} in una nuova scheda\n(dal browser diventa ${open})`;
+
+    document.getElementById('result-links').innerHTML = `
+      ${failed
+        ? `<span class="badge badge-fail">${failed}/${entries.length} diversi</span>`
+        : `<span class="badge badge-pass">${entries.length}/${entries.length} ok</span>`}
+      <a href="${reportUrl(slug)}" target="_blank" rel="noopener noreferrer">report completo</a>`;
+
+    document.getElementById('result-pos').textContent = `${index + 1} / ${items.length}`;
+    const alone = items.length < 2;
+    document.getElementById('result-prev').disabled = alone;
+    document.getElementById('result-next').disabled = alone;
+
+    // Chi apre il confronto cerca la differenza: i viewport che ce l'hanno
+    // vanno per primi, gli altri restano nell'ordine della configurazione.
+    const ordered = [...entries].sort((a, b) => (b.status === 'fail') - (a.status === 'fail'));
+
+    resultBody.innerHTML = ordered.map((e) => `
+      <section class="vp-result">
+        <div class="vp-result-head">
+          <span>${esc(e.viewport || 'viewport')}</span>
+          ${e.status === 'fail'
+            ? `<span class="badge badge-sm badge-fail">${esc(e.misMatchPercentage ?? '?')}% diverso</span>`
+            : '<span class="badge badge-sm badge-pass">nessuna differenza</span>'}
+        </div>
+        <div class="shots">
+          ${shotFigure('Baseline', slug, e.images?.reference, 'baseline non disponibile')}
+          ${shotFigure('Ultimo test', slug, e.images?.test, 'scatto non disponibile')}
+          ${shotFigure('Differenze', slug, e.images?.diff, e.status === 'fail' ? 'diff non disponibile' : 'nessuna differenza')}
+        </div>
+      </section>`).join('');
+    resultBody.scrollTop = 0;
+  }
+
+  function stepResult(delta) {
+    const total = resultNav.items.length;
+    if (total < 2) return;
+    resultNav.index = (resultNav.index + delta + total) % total;
+    drawResult();
+  }
+
+  document.getElementById('result-prev').addEventListener('click', () => stepResult(-1));
+  document.getElementById('result-next').addEventListener('click', () => stepResult(1));
+  resultDialog.addEventListener('keydown', (ev) => {
+    if (ev.key === 'ArrowLeft') { ev.preventDefault(); stepResult(-1); }
+    else if (ev.key === 'ArrowRight') { ev.preventDefault(); stepResult(1); }
+  });
+
+  function openResultDialog(slug, items, index) {
+    hidePreview();
+    resultNav.slug = slug;
+    resultNav.items = items;
+    resultNav.index = index;
+    drawResult();
+    if (!resultDialog.open) resultDialog.showModal();
   }
 
   // ---------- pannello esecuzioni (globale) ----------
@@ -59,6 +243,27 @@
   const runLog = document.getElementById('run-log');
   const runHistory = document.getElementById('run-history');
   let eventSource = null;
+
+  // Il pannello esecuzioni è di servizio: si chiude per lasciare tutta la
+  // pagina alla tabella. Chiuso, lo stato del run resta leggibile dal pallino
+  // sull'interruttore in testata; un run che parte lo riapre.
+  const railToggle = document.getElementById('rail-toggle');
+  const railDot = document.getElementById('rail-dot');
+  const RAIL_KEY = 'backstopui.rail';
+
+  function setRail(open) {
+    document.body.classList.toggle('rail-hidden', !open);
+    railToggle.setAttribute('aria-expanded', String(open));
+    writePref(RAIL_KEY, open ? '1' : '0');
+  }
+
+  function setRailStatus(status) {
+    railDot.className = `dot dot-${status || 'idle'}`;
+  }
+
+  setRail(readPref(RAIL_KEY, '1') !== '0');
+  railToggle.addEventListener('click', () => setRail(document.body.classList.contains('rail-hidden')));
+  document.getElementById('rail-hide').addEventListener('click', () => setRail(false));
 
   const COMMAND_LABEL = {
     reference: 'baseline',
@@ -158,6 +363,8 @@
     eventSource?.close();
     runLog.textContent = '';
     runCurrent.innerHTML = runLine(run);
+    setRailStatus(run.status);
+    setRail(true);
     const progress = trackProgress(run);
 
     eventSource = new EventSource(`/api/runs/${run.id}/log`);
@@ -170,6 +377,7 @@
     eventSource.addEventListener('status', (ev) => {
       const { run: updated } = JSON.parse(ev.data);
       runCurrent.innerHTML = runLine(updated);
+      setRailStatus(updated.status);
       if (updated.status === 'success' || updated.status === 'failed' || updated.status === 'cancelled') {
         progress.finish();
         eventSource.close();
@@ -252,6 +460,7 @@
       const runs = await api('/api/runs');
       const active = runs.find((r) => r.status === 'running' || r.status === 'queued');
       if (active) watchRun(active);
+      else if (runs[0]) setRailStatus(runs[0].status);
       refreshHistory();
     } catch { /* ignora */ }
   }
@@ -395,9 +604,23 @@
     }
     const defaults = projectDefaults(config);
     const lastResult = await api(`/api/projects/${slug}/result`).catch(() => null);
-    const failsByScenario = new Set(
-      (lastResult?.tests || []).filter((t) => t.status === 'fail').map((t) => t.label)
-    );
+    // L'ultimo test ha un esito per ogni coppia pagina×viewport: raggruppati
+    // per pagina servono sia alla colonna "esito" sia al confronto in modale.
+    const testsByLabel = new Map();
+    for (const t of lastResult?.tests || []) {
+      if (!testsByLabel.has(t.label)) testsByLabel.set(t.label, []);
+      testsByLabel.get(t.label).push(t);
+    }
+
+    function summarize(entries) {
+      const fail = entries.filter((e) => e.status === 'fail');
+      return {
+        total: entries.length,
+        fail: fail.length,
+        pass: entries.length - fail.length,
+        worst: fail.reduce((max, e) => Math.max(max, Number(e.misMatchPercentage) || 0), 0),
+      };
+    }
 
     // L'approvazione agisce sul report dell'ultimo test. Se quel test era
     // filtrato su una pagina, copre solo quella: dichiariamo lo scope reale
@@ -430,21 +653,49 @@
       } catch (err) { toast(err.message); }
     }
 
+    // La cella è un bottone: aprire il confronto deve essere raggiungibile
+    // anche da tastiera, non solo cliccando la riga.
+    function outcomeCell(res, i) {
+      if (!res) return '<span class="badge badge-sm badge-none">—</span>';
+      const inner = res.fail
+        ? `<span class="badge badge-sm badge-fail">${res.fail}/${res.total} div.</span>`
+        : `<span class="badge badge-sm badge-pass">${res.pass}/${res.total} ok</span>`;
+      const worst = res.worst ? ` — differenza massima ${res.worst}%` : '';
+      const what = res.fail
+        ? `${res.fail} viewport su ${res.total} con differenze${worst}`
+        : `${res.total} viewport senza differenze`;
+      return `<button type="button" class="outcome-btn" data-inspect="${i}"
+        title="${esc(`${what}. Apri il confronto.`)}">${inner}</button>`;
+    }
+
     const scenarioRows = config.scenarios.map((sc, i) => {
-      const ignored = (sc.hideSelectors?.length || 0) + (sc.removeSelectors?.length || 0);
-      const canApprove = failsByScenario.has(sc.label);
+      const hidden = sc.hideSelectors?.length || 0;
+      const removed = sc.removeSelectors?.length || 0;
+      const entries = testsByLabel.get(sc.label);
+      const res = entries ? summarize(entries) : null;
+      const canApprove = Boolean(res?.fail);
       const approveTitle = canApprove
         ? `Promuove a baseline gli screenshot di "${sc.label}" dall'ultimo test.`
         : "Nessuna differenza da approvare per questa pagina nell'ultimo test.";
-      return `<tr class="${canApprove ? 'row-fail' : ''}">
+      const open = browserUrl(sc.url);
+      const urlTitle = open === sc.url
+        ? `Apri ${sc.url} in una nuova scheda`
+        : `Apri ${sc.url} in una nuova scheda\n(dal browser diventa ${open})`;
+      return `<tr data-row="${i}" class="${canApprove ? 'row-fail' : ''} ${res ? 'is-inspectable' : ''}"
+        ${res ? 'title="Clicca la riga per vedere il confronto"' : ''}>
         <td class="mono truncate" title="${esc(sc.label)}">${esc(sc.label)}</td>
-        <td class="mono truncate" title="${esc(sc.url)}">${esc(sc.url)}</td>
-        <td class="mono">${ignored || '—'}</td>
+        <td class="mono truncate">
+          <a class="url-link" href="${esc(open)}" target="_blank" rel="noopener noreferrer" title="${esc(urlTitle)}">${esc(sc.url)}</a>
+        </td>
+        <td>${outcomeCell(res, i)}</td>
+        <td class="mono num">${sc.delay ?? 0}</td>
+        <td class="mono num">${sc.misMatchThreshold ?? 0.1}</td>
+        <td class="mono num" title="${esc(`${hidden} area/e nascoste, ${removed} rimosse`)}">${hidden || removed ? `${hidden}+${removed}` : '—'}</td>
         <td><div class="actions-cell">
-          <button class="btn btn-ghost" data-edit="${i}">Modifica</button>
-          <button class="btn btn-ghost" data-run-one="${i}">Test</button>
+          <button class="btn btn-ghost" data-edit="${i}" title="Modifica questa pagina">Modifica</button>
+          <button class="btn btn-ghost" data-run-one="${i}" title="Esegui il test solo per questa pagina">Test</button>
           <button class="btn btn-ghost" data-approve-one="${i}" title="${esc(approveTitle)}" ${canApprove ? '' : 'disabled'}>Approva</button>
-          <button class="btn btn-danger" data-del="${i}">Elimina</button>
+          <button class="btn btn-danger" data-del="${i}" title="Rimuovi questa pagina dal progetto">Elimina</button>
         </div></td>
       </tr>`;
     }).join('');
@@ -457,11 +708,19 @@
         <button class="btn btn-ghost" data-vp-del="${i}" ${config.viewports.length === 1 ? 'disabled' : ''}>×</button>
       </div>`).join('');
 
+    const configNote = [
+      `${config.viewports.length} viewport: ${config.viewports.map((vp) => `${vp.width}×${vp.height}`).join(', ')}`,
+      `attesa ${defaults.delay} ms`,
+      `soglia ${defaults.misMatchThreshold}%`,
+      `discreta ${config.stealth ? 'attiva' : 'spenta'}`,
+    ].join(' · ');
+
     view.innerHTML = `
       <p class="crumb"><a href="#/">← progetti</a></p>
       <div class="project-head">
         <h1 class="mono">${esc(slug)}</h1>
         ${badge(lastResult)}
+        ${lastResult ? `<span class="hint">ultimo test ${esc(fmtWhen(lastResult.at))}</span>` : ''}
         ${lastResult ? `<a class="btn btn-ghost" href="${reportUrl(slug)}" target="_blank">Apri report</a>` : ''}
       </div>
 
@@ -473,85 +732,153 @@
         <button class="btn btn-danger" id="del-project">Elimina progetto</button>
       </div>
 
-      <section class="section">
-        <h2>Impostazioni predefinite pagina</h2>
-        <p class="hint">Punto di partenza per le nuove pagine (a mano o dal crawler). Ogni pagina resta modificabile singolarmente.</p>
-        <form id="defaults-form" class="settings-form">
-          <div class="form-row">
-            <label>Attesa dopo il load (ms)
-              <input name="delay" type="number" min="0" step="100" value="${defaults.delay}">
-            </label>
-            <label>Soglia differenze (%)
-              <input name="misMatchThreshold" type="number" min="0" max="100" step="0.1" value="${defaults.misMatchThreshold}">
-            </label>
+      <details class="panel" data-panel="config" ${isPanelOpen('config') ? 'open' : ''}>
+        <summary>Configurazione<span class="summary-note">${esc(configNote)}</span></summary>
+        <div class="panel-body config-grid">
+          <div class="config-block">
+            <h3>Viewport (${config.viewports.length})</h3>
+            <p class="hint">Ogni pagina viene fotografata a tutte queste dimensioni.</p>
+            <div id="vp-editor">${vpRows}</div>
+            <div class="section-actions">
+              <button class="btn btn-ghost" id="vp-add">Aggiungi viewport</button>
+              <button class="btn btn-primary" id="vp-save">Salva viewport</button>
+            </div>
           </div>
-          <label>Clicca prima dello screenshot (selettore CSS)
-            <input name="clickSelector" placeholder="es. #accetta-cookie" value="${esc(defaults.clickSelector)}" autocomplete="off">
-          </label>
-          <div class="form-row">
-            <label>Aree da nascondere <small>uno per riga — lo spazio resta</small>
-              <textarea name="hideSelectors" rows="3" placeholder=".carousel&#10;.orologio">${esc(defaults.hideSelectors.join('\n'))}</textarea>
-            </label>
-            <label>Aree da rimuovere <small>uno per riga — lo spazio collassa</small>
-              <textarea name="removeSelectors" rows="3" placeholder=".cookie-banner">${esc(defaults.removeSelectors.join('\n'))}</textarea>
-            </label>
+
+          <div class="config-block">
+            <h3>Impostazioni predefinite pagina</h3>
+            <p class="hint">Punto di partenza per le nuove pagine (a mano o dal crawler). Ogni pagina resta modificabile singolarmente.</p>
+            <form id="defaults-form" class="settings-form">
+              <div class="form-row">
+                <label>Attesa dopo il load (ms)
+                  <input name="delay" type="number" min="0" step="100" value="${defaults.delay}">
+                </label>
+                <label>Soglia differenze (%)
+                  <input name="misMatchThreshold" type="number" min="0" max="100" step="0.1" value="${defaults.misMatchThreshold}">
+                </label>
+              </div>
+              <label>Clicca prima dello screenshot (selettore CSS)
+                <input name="clickSelector" placeholder="es. #accetta-cookie" value="${esc(defaults.clickSelector)}" autocomplete="off">
+              </label>
+              <div class="form-row">
+                <label>Aree da nascondere <small>uno per riga — lo spazio resta</small>
+                  <textarea name="hideSelectors" rows="3" placeholder=".carousel&#10;.orologio">${esc(defaults.hideSelectors.join('\n'))}</textarea>
+                </label>
+                <label>Aree da rimuovere <small>uno per riga — lo spazio collassa</small>
+                  <textarea name="removeSelectors" rows="3" placeholder=".cookie-banner">${esc(defaults.removeSelectors.join('\n'))}</textarea>
+                </label>
+              </div>
+              <div class="section-actions">
+                <button class="btn btn-primary" type="submit">Salva impostazioni predefinite</button>
+              </div>
+            </form>
           </div>
-          <div class="section-actions">
-            <button class="btn btn-primary" type="submit">Salva impostazioni predefinite</button>
+
+          <div class="config-block">
+            <h3>Modalità discreta</h3>
+            <p class="hint">
+              Nasconde al sito che le pagine vengono aperte da un browser pilotato: user agent senza
+              «Headless», <span class="mono">navigator.webdriver</span> a false, lingua e fuso coerenti,
+              e header da browser vero anche per il crawler. Serve quando un WAF risponde con una
+              challenge o un 403 invece che con la pagina.
+            </p>
+            <label class="toggle">
+              <input type="checkbox" id="stealth-toggle" ${config.stealth ? 'checked' : ''}>
+              <span>Maschera l'automazione del browser</span>
+            </label>
+            <p class="hint">
+              Cambia il modo in cui il sito viene richiesto (user agent, lingua, fuso): dopo aver
+              attivato o spento questa opzione rifai la baseline, altrimenti il primo test può
+              segnalare differenze che non sono regressioni.
+            </p>
           </div>
-        </form>
-      </section>
+        </div>
+      </details>
+
+      <details class="panel" data-panel="crawler" ${isPanelOpen('crawler') ? 'open' : ''}>
+        <summary>Scopri pagine (crawler)<span class="summary-note">aggiunge pagine seguendo i link da un URL di partenza</span></summary>
+        <div class="panel-body">
+          <form id="crawl-form" class="crawl-form">
+            <input name="url" placeholder="URL di partenza, es. http://demo/ o https://www.example.com" required>
+            <input name="maxPages" type="number" value="30" min="1" max="100" title="numero massimo di pagine">
+            <button class="btn" type="submit">Scopri pagine</button>
+          </form>
+          <div id="crawl-results" class="crawl-results"></div>
+        </div>
+      </details>
 
       <section class="section">
-        <h2>Modalità discreta</h2>
-        <p class="hint">
-          Nasconde al sito che le pagine vengono aperte da un browser pilotato: user agent senza
-          «Headless», <span class="mono">navigator.webdriver</span> a false, lingua e fuso coerenti,
-          e header da browser vero anche per il crawler. Serve quando un WAF risponde con una
-          challenge o un 403 invece che con la pagina.
-        </p>
-        <label class="toggle">
-          <input type="checkbox" id="stealth-toggle" ${config.stealth ? 'checked' : ''}>
-          <span>Maschera l'automazione del browser</span>
-        </label>
-        <p class="hint">
-          Cambia il modo in cui il sito viene richiesto (user agent, lingua, fuso): dopo aver
-          attivato o spento questa opzione rifai la baseline, altrimenti il primo test può
-          segnalare differenze che non sono regressioni.
-        </p>
-      </section>
-
-      <section class="section">
-        <h2>Pagine sotto controllo (${config.scenarios.length})</h2>
+        <div class="section-head">
+          <h2>Pagine sotto controllo (${config.scenarios.length})</h2>
+          <div class="section-head-actions">
+            <button class="btn btn-primary btn-mini" id="add-scenario">Aggiungi pagina</button>
+            <button class="btn btn-danger btn-mini" id="del-all-scenarios" ${config.scenarios.length ? '' : 'disabled'}>Elimina tutte</button>
+          </div>
+        </div>
         ${config.scenarios.length ? `<div class="table-wrap"><table class="scenarios-table">
-          <thead><tr><th>Nome</th><th>URL</th><th>Ignorati</th><th>Azioni</th></tr></thead>
+          <colgroup>
+            <col class="c-name"><col class="c-url"><col class="c-res">
+            <col class="c-delay"><col class="c-thr"><col class="c-ign"><col class="c-act">
+          </colgroup>
+          <thead><tr>
+            <th>Nome</th><th>URL</th><th>Esito</th>
+            <th title="attesa dopo il load, in millisecondi">Attesa</th>
+            <th title="soglia differenze, in percentuale">Soglia</th>
+            <th title="aree ignorate: nascoste + rimosse">Aree</th>
+            <th>Azioni</th>
+          </tr></thead>
           <tbody>${scenarioRows}</tbody>
-        </table></div>` : '<div class="empty">Nessuna pagina. Aggiungine una a mano o scoprile col crawler qui sotto.</div>'}
-        <div class="section-actions">
-          <button class="btn btn-primary" id="add-scenario">Aggiungi pagina</button>
-          <button class="btn btn-danger" id="del-all-scenarios" ${config.scenarios.length ? '' : 'disabled'}>Elimina tutti</button>
-        </div>
-      </section>
-
-      <section class="section">
-        <h2>Scopri pagine (crawler)</h2>
-        <form id="crawl-form" class="crawl-form">
-          <input name="url" placeholder="URL di partenza, es. http://demo/ o https://www.example.com" required>
-          <input name="maxPages" type="number" value="30" min="1" max="100" title="numero massimo di pagine">
-          <button class="btn" type="submit">Scopri pagine</button>
-        </form>
-        <div id="crawl-results" class="crawl-results"></div>
-      </section>
-
-      <section class="section">
-        <h2>Viewport (${config.viewports.length})</h2>
-        <div id="vp-editor">${vpRows}</div>
-        <div class="section-actions">
-          <button class="btn btn-ghost" id="vp-add">Aggiungi viewport</button>
-          <button class="btn btn-primary" id="vp-save">Salva viewport</button>
-        </div>
+        </table></div>` : '<div class="empty">Nessuna pagina. Aggiungine una a mano o scoprila col crawler qui sopra.</div>'}
       </section>
     `;
+
+    view.querySelectorAll('details.panel').forEach((panel) => {
+      panel.addEventListener('toggle', () => setPanelOpen(panel.dataset.panel, panel.open));
+    });
+
+    // --- esito della singola pagina: anteprima al passaggio, confronto al click ---
+    const tbody = view.querySelector('.scenarios-table tbody');
+
+    // Le pagine con un esito, nell'ordine della tabella: è l'elenco su cui
+    // scorrono le frecce della modale.
+    const inspectable = config.scenarios
+      .map((scenario) => ({ scenario, entries: testsByLabel.get(scenario.label) }))
+      .filter((item) => item.entries?.length);
+
+    function entriesOfRow(el) {
+      const row = el?.closest('tr[data-row]');
+      if (!row) return null;
+      const scenario = config.scenarios[Number(row.dataset.row)];
+      return inspectable.find((item) => item.scenario === scenario) || null;
+    }
+
+    function inspectRow(el) {
+      const found = entriesOfRow(el);
+      if (found) openResultDialog(slug, inspectable, inspectable.indexOf(found));
+    }
+
+    if (tbody) {
+      let hovered = null;
+      tbody.addEventListener('mouseover', (ev) => {
+        const row = ev.target.closest('tr[data-row]');
+        if (row === hovered) return;
+        hovered = row;
+        hidePreview();
+        const found = entriesOfRow(row);
+        if (found) schedulePreview(slug, found.entries, ev.clientX, ev.clientY);
+      });
+      tbody.addEventListener('mouseleave', () => { hovered = null; hidePreview(); });
+
+      // Il click sulla riga apre il confronto, ma URL e comandi restano loro.
+      tbody.addEventListener('click', (ev) => {
+        if (ev.target.closest('a, button, input')) return;
+        inspectRow(ev.target);
+      });
+    }
+
+    view.querySelectorAll('[data-inspect]').forEach((btn) => {
+      btn.addEventListener('click', () => inspectRow(btn));
+    });
 
     // --- azioni run ---
     const goRun = (command, scenarioLabel) =>
@@ -728,6 +1055,7 @@
   // ---------- router ----------
 
   function render() {
+    hidePreview(); // la vista viene sostituita: nessun mouseleave arriverebbe
     const hash = location.hash || '#/';
     const match = hash.match(/^#\/project\/([a-z0-9-]+)$/);
     if (match) {

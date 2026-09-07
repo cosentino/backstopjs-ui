@@ -34,12 +34,35 @@ body {
 
 .topbar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 1rem;
-  padding: 0.9rem 1.5rem;
+  padding: 0.7rem 1.5rem;
   border-bottom: 2px solid var(--ink);
   background: var(--card);
 }
+
+/* Interruttore del pannello esecuzioni: sempre visibile, con il pallino di
+   stato così il run resta leggibile anche a pannello chiuso. */
+.rail-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.35rem 0.7rem;
+  background: var(--card);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.rail-toggle:hover { color: var(--ink); border-color: var(--ink); }
+.rail-toggle .dot { width: 7px; height: 7px; border-radius: 50%; }
+.dot-idle { background: var(--line); }
+body:not(.rail-hidden) .rail-toggle { color: var(--ink); border-color: var(--ink); }
 
 .wordmark {
   font-family: var(--mono);
@@ -66,16 +89,21 @@ body {
   color: var(--muted);
 }
 
+/* La tabella delle pagine è il contenuto principale: la colonna di sinistra
+   prende tutta la larghezza disponibile e il pannello esecuzioni, che è di
+   servizio, si può chiudere lasciandole l'intera pagina. */
 .shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 1.5rem;
-  max-width: 1280px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.25rem;
+  max-width: 1720px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 1.25rem 1.5rem;
   align-items: start;
 }
-@media (max-width: 980px) {
+body.rail-hidden .shell { grid-template-columns: minmax(0, 1fr); }
+body.rail-hidden .runbar { display: none; }
+@media (max-width: 1100px) {
   .shell { grid-template-columns: minmax(0, 1fr); }
 }
 
@@ -97,21 +125,88 @@ h1 {
 .crumb a:hover { color: var(--ink); }
 
 .section {
-  margin-top: 1.75rem;
+  margin-top: 1.5rem;
 }
-.section > h2 {
+.section > h2, .section-head > h2, .config-block > h3 {
   font-family: var(--mono);
   font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--muted);
+}
+.section > h2 {
   border-bottom: 1px solid var(--line);
   padding-bottom: 0.35rem;
   margin-bottom: 0.75rem;
 }
 
+/* Titolo di sezione con le sue azioni sulla stessa riga: la tabella parte
+   più in alto e le CTA restano a portata senza scorrere in fondo. */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+.section-head-actions { margin-left: auto; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
 .hint { color: var(--muted); font-size: 0.85rem; }
+
+/* ---------- pannelli richiudibili (configurazione, crawler) ---------- */
+
+.panel {
+  margin-top: 0.75rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.panel > summary {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.6rem 0.85rem;
+  cursor: pointer;
+  list-style: none;
+}
+.panel > summary::-webkit-details-marker { display: none; }
+.panel > summary::before {
+  content: '▸';
+  font-size: 0.75rem;
+  transition: transform 0.15s ease;
+}
+.panel[open] > summary::before { transform: rotate(90deg); }
+.panel > summary:hover { color: var(--ink); }
+.panel[open] > summary { border-bottom: 1px solid var(--line); }
+.summary-note {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--muted);
+}
+.panel-body { padding: 1rem 0.85rem; }
+
+/* Tutta la configurazione affiancata in un solo pannello. */
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem 2rem;
+  align-items: start;
+}
+.config-block > h3 { margin-bottom: 0.5rem; }
+@media (prefers-reduced-motion: reduce) {
+  .panel > summary::before { transition: none; }
+}
 
 .empty {
   background: var(--checker);
@@ -144,6 +239,7 @@ h1 {
 .btn-danger { border-color: var(--diff); color: var(--diff); }
 .btn-danger:hover { background: var(--diff); border-color: var(--diff); color: #fff; }
 .btn-ghost { border-color: var(--line); }
+.btn-mini { padding: 0.15rem 0.45rem; font-size: 0.68rem; }
 .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 .btn[disabled]:hover { background: var(--card); color: var(--ink); }
 .btn-ghost[disabled]:hover { border-color: var(--line); }
@@ -184,6 +280,9 @@ label small { color: var(--muted); font-weight: normal; }
 .badge-fail::before { background: var(--diff); }
 .badge-none { background: var(--paper); color: var(--muted); border: 1px solid var(--line); }
 .badge-none::before { background: var(--checker); border: 1px solid var(--line); }
+/* variante per la cella "esito" della tabella pagine */
+.badge-sm { font-size: 0.68rem; padding: 0.05rem 0.35rem; gap: 0.3rem; }
+.badge-sm::before { width: 6px; height: 6px; }
 
 /* ---------- card progetti ---------- */
 
@@ -208,6 +307,8 @@ label small { color: var(--muted); font-weight: normal; }
 .card h3 a { color: var(--ink); text-decoration: none; }
 .card h3 a:hover { color: var(--diff); }
 
+.card .badge { align-self: flex-start; }
+
 .card-meta {
   font-family: var(--mono);
   font-size: 0.72rem;
@@ -223,39 +324,88 @@ label small { color: var(--muted); font-weight: normal; }
 table { border-collapse: collapse; width: 100%; background: var(--card); }
 th {
   font-family: var(--mono);
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   color: var(--muted);
   text-align: left;
   font-weight: 600;
 }
 th, td {
-  padding: 0.5rem 0.65rem;
+  padding: 0.3rem 0.5rem;
   border: 1px solid var(--line);
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   vertical-align: middle;
 }
-td.mono, .mono { font-family: var(--mono); font-size: 0.8rem; }
-td .btn { padding: 0.25rem 0.55rem; font-size: 0.72rem; }
+.mono { font-family: var(--mono); }
+td.mono { font-size: 0.74rem; }
+h1.mono { font-size: 1.35rem; }
+td .btn { padding: 0.1rem 0.4rem; font-size: 0.68rem; }
 tr.row-fail td:first-child { box-shadow: inset 3px 0 0 var(--diff); }
 
-.actions-cell { white-space: nowrap; display: flex; gap: 0.35rem; }
+.actions-cell { white-space: nowrap; display: flex; gap: 0.25rem; }
 
-/* tabella pagine: larghezze fisse + troncamento per nomi/URL lunghi,
-   così le CTA in ultima colonna restano leggibili senza scroll orizzontale
-   nel caso normale; oltre il min-width il wrapper scrolla come fallback. */
-table.scenarios-table { table-layout: fixed; min-width: 640px; }
-table.scenarios-table th:nth-child(1), table.scenarios-table td:nth-child(1) { width: 18%; }
-table.scenarios-table th:nth-child(2), table.scenarios-table td:nth-child(2) { width: auto; }
-table.scenarios-table th:nth-child(3), table.scenarios-table td:nth-child(3) { width: 90px; }
-table.scenarios-table th:nth-child(4), table.scenarios-table td:nth-child(4) { width: 300px; }
+/* tabella pagine: è il centro della pagina, quindi densa (font piccolo,
+   righe basse, bordi solo orizzontali) e a larghezze fisse via <colgroup>,
+   con troncamento per nomi/URL lunghi. Oltre il min-width il wrapper
+   scrolla come fallback. */
+table.scenarios-table { table-layout: fixed; min-width: 900px; }
+.scenarios-table th, .scenarios-table td {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+}
+.scenarios-table thead th { border-bottom: 1px solid var(--ink); }
+.scenarios-table tbody tr:nth-child(even) td { background: #f6f7f5; }
+.scenarios-table tbody tr:hover td { background: #eceee9; }
+.scenarios-table col.c-res { width: 92px; }
+.scenarios-table col.c-delay { width: 58px; }
+.scenarios-table col.c-thr { width: 60px; }
+.scenarios-table col.c-ign { width: 58px; }
+.scenarios-table col.c-name { width: 20%; }
+.scenarios-table col.c-act { width: 252px; }
+.scenarios-table td.num { text-align: right; color: var(--muted); }
+
+/* Righe con un esito: tutta la riga apre il confronto, tranne i comandi. */
+.scenarios-table tr.is-inspectable { cursor: pointer; }
+.outcome-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  display: block;
+}
+.outcome-btn:focus-visible { outline: 2px solid var(--diff); outline-offset: 2px; }
 table.scenarios-table td.truncate {
   max-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: default;
+}
+
+/* Colonna URL: l'indirizzo apre la pagina reale in una nuova scheda. */
+.url-link {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--line);
+}
+.url-link:hover { color: var(--diff); border-bottom-color: var(--diff); }
+
+/* Con spazio a sufficienza niente scroll orizzontale: l'intestazione può
+   restare agganciata in alto mentre si scorre un elenco lungo di pagine. */
+@media (min-width: 1100px) {
+  .table-wrap { overflow-x: visible; }
+  .scenarios-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--paper);
+  }
 }
 
 /* editor viewport: righe di input compatte */
@@ -327,6 +477,7 @@ table.scenarios-table td.truncate {
   gap: 0.75rem;
   max-height: calc(100vh - 3rem);
 }
+.runbar-head { display: flex; align-items: center; gap: 0.5rem; }
 .runbar-title {
   font-family: var(--mono);
   font-size: 0.72rem;
@@ -334,6 +485,7 @@ table.scenarios-table td.truncate {
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--muted);
+  margin-right: auto;
 }
 
 .run-current { font-size: 0.85rem; }
@@ -434,11 +586,150 @@ table.scenarios-table td.truncate {
   border-radius: 4px;
   padding: 1.25rem;
   width: min(560px, 92vw);
+  /* Il reset universale azzera il margin:auto con cui il browser centra le
+     dialog modali: senza questo si aprono incollate in alto a sinistra. */
+  margin: auto;
 }
 .dialog::backdrop { background: rgba(22, 24, 29, 0.45); }
 .dialog h3 { margin-bottom: 0.9rem; letter-spacing: -0.01em; }
 .dialog form { display: flex; flex-direction: column; gap: 0.75rem; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
+
+/* ---------- esito di una singola pagina ---------- */
+
+/* Il confronto è fatto di screenshot a pagina intera: la modale prende quasi
+   tutto lo schermo e le tre immagini scorrono insieme, così restano allineate. */
+/* Il display va messo solo sull'aperta: una regola secca vincerebbe sul
+   display:none che il browser applica alla dialog chiusa, lasciandola a video. */
+.dialog-wide { width: min(1500px, 96vw); max-height: 92vh; }
+.dialog-wide[open] { display: flex; flex-direction: column; }
+.result-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.6rem;
+}
+/* Label e URL possono essere lunghissimi: la colonna d'identità si stringe
+   e tronca, così i comandi a destra non vengono spinti fuori. */
+.result-id { min-width: 0; flex: 1 1 auto; }
+.result-head h3 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.result-url {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px dotted transparent;
+}
+.result-url:hover { color: var(--diff); border-bottom-color: var(--diff); }
+.result-links { display: flex; align-items: center; gap: 0.75rem; font-size: 0.8rem; }
+.result-links a { color: var(--muted); }
+.result-links a:hover { color: var(--diff); }
+
+.result-nav { display: flex; align-items: center; gap: 0.4rem; }
+.result-nav .btn { padding: 0.2rem 0.6rem; font-size: 0.95rem; line-height: 1; }
+.result-pos {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  min-width: 4.5em;
+  text-align: center;
+}
+.result-body { overflow: auto; padding-top: 0.75rem; }
+.result-body:focus { outline: none; }
+
+.vp-result + .vp-result { margin-top: 1rem; }
+.vp-result-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+.shots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+  align-items: start;
+  max-height: 56vh;
+  overflow: auto;
+  background: var(--checker);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0.4rem;
+}
+.shots figure { min-width: 0; }
+.shots figcaption {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  padding-bottom: 0.25rem;
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  z-index: 1;
+}
+/* Mai ingrandire: uno scatto mobile da 375px va mostrato a 375px, non
+   stirato sulla colonna. */
+.shots img { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); background: #fff; }
+.shots .shot-missing {
+  font-size: 0.78rem;
+  color: var(--muted);
+  padding: 0.9rem;
+  border: 1px dashed var(--line);
+  background: var(--card);
+}
+@media (max-width: 900px) {
+  .shots { grid-template-columns: 1fr; max-height: none; }
+}
+
+/* ---------- anteprima al passaggio del mouse ---------- */
+
+.shot-preview {
+  position: fixed;
+  z-index: 60;
+  background: var(--card);
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  padding: 0.3rem;
+  box-shadow: 0 8px 24px rgba(22, 24, 29, 0.22);
+  pointer-events: none;
+  max-width: 360px;
+}
+.shot-preview img {
+  display: block;
+  max-width: 340px;
+  max-height: 420px;
+  width: auto;
+  height: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+.shot-preview-cap {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+  padding: 0.25rem 0.1rem 0.05rem;
+}
+.shot-preview-cap b { color: var(--ink); font-weight: 600; }
 
 /* ---------- toast errori ---------- */
 

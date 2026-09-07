@@ -8,7 +8,10 @@ const { getLastResult, clearLastResult } = require('../lib/results');
 
 const FIXTURE =
   'report({"testSuite":"BackstopJS","tests":[' +
-  '{"pair":{"label":"Home","viewportLabel":"mobile","diff":{"misMatchPercentage":"7.81"}},"status":"fail"},' +
+  '{"pair":{"label":"Home","viewportLabel":"mobile","diff":{"misMatchPercentage":"7.81"},' +
+  '"reference":"../bitmaps_reference/x_Home_0_document_0_mobile.png",' +
+  '"test":"../bitmaps_test/20260101-101010/x_Home_0_document_0_mobile.png",' +
+  '"diffImage":"../bitmaps_test/20260101-101010/failed_diff_x_Home_0_document_0_mobile.png"},"status":"fail"},' +
   '{"pair":{"label":"Home","viewportLabel":"desktop","diff":{"misMatchPercentage":"0.00"}},"status":"pass"}' +
   ']});';
 
@@ -30,8 +33,28 @@ test('getLastResult: parse del report', () => {
     viewport: 'mobile',
     status: 'fail',
     misMatchPercentage: '7.81',
+    // percorsi risolti rispetto alla cartella del progetto (quella su /reports)
+    images: {
+      reference: 'backstop_data/bitmaps_reference/x_Home_0_document_0_mobile.png',
+      test: 'backstop_data/bitmaps_test/20260101-101010/x_Home_0_document_0_mobile.png',
+      diff: 'backstop_data/bitmaps_test/20260101-101010/failed_diff_x_Home_0_document_0_mobile.png',
+    },
   });
   assert.ok(typeof res.at === 'string' && !Number.isNaN(Date.parse(res.at)));
+});
+
+test('getLastResult: senza immagini nel report i percorsi sono null', () => {
+  const dir = writeFixture(FIXTURE);
+  const res = getLastResult(dir, 'x');
+  assert.deepStrictEqual(res.tests[1].images, { reference: null, test: null, diff: null });
+});
+
+test('getLastResult: un percorso fuori da backstop_data non viene servito', () => {
+  const dir = writeFixture(
+    'report({"tests":[{"pair":{"label":"Home","viewportLabel":"mobile",'
+    + '"reference":"../../../../etc/passwd"},"status":"fail"}]});'
+  );
+  assert.strictEqual(getLastResult(dir, 'x').tests[0].images.reference, null);
 });
 
 test('getLastResult: file mancante → null', () => {

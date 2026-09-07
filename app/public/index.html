@@ -14,6 +14,10 @@
       backstop<b>ui</b>
     </a>
     <span class="topbar-note">visual regression testing</span>
+    <button type="button" id="rail-toggle" class="rail-toggle" aria-expanded="true" aria-controls="runbar">
+      <span class="dot dot-idle" id="rail-dot" aria-hidden="true"></span>
+      Esecuzioni
+    </button>
   </header>
 
   <div class="shell">
@@ -21,8 +25,11 @@
       <!-- render via app.js -->
     </main>
 
-    <aside class="runbar">
-      <h2 class="runbar-title">Esecuzioni</h2>
+    <aside class="runbar" id="runbar">
+      <div class="runbar-head">
+        <h2 class="runbar-title">Esecuzioni</h2>
+        <button type="button" class="btn btn-ghost btn-mini" id="rail-hide">Nascondi</button>
+      </div>
       <div id="run-current" class="run-current">
         <p class="empty">Nessuna esecuzione in corso.</p>
       </div>
@@ -34,6 +41,29 @@
       <ol id="run-history" class="run-history"></ol>
     </aside>
   </div>
+
+  <!-- Anteprima del confronto che segue il mouse sulle righe della tabella. -->
+  <div id="shot-preview" class="shot-preview" hidden aria-hidden="true"></div>
+
+  <!-- Esito dell'ultimo test per una singola pagina: baseline, test e diff. -->
+  <dialog id="result-dialog" class="dialog dialog-wide">
+    <div class="result-head">
+      <div class="result-id">
+        <h3 id="result-title">Esito</h3>
+        <a id="result-url" class="result-url" target="_blank" rel="noopener noreferrer"></a>
+      </div>
+      <div id="result-links" class="result-links"></div>
+      <div class="result-nav">
+        <button type="button" class="btn btn-ghost" id="result-prev" title="Pagina precedente (←)">‹</button>
+        <span id="result-pos" class="result-pos"></span>
+        <button type="button" class="btn btn-ghost" id="result-next" title="Pagina successiva (→)">›</button>
+      </div>
+      <button type="button" class="btn" id="result-close">Chiudi</button>
+    </div>
+    <!-- autofocus qui: aprendo la modale il fuoco andrebbe sul link URL, con
+         l'anello di focus addosso e Invio che aprirebbe la pagina. -->
+    <div id="result-body" class="result-body" tabindex="-1" autofocus></div>
+  </dialog>
 
   <dialog id="scenario-dialog" class="dialog">
     <form method="dialog" id="scenario-form">
