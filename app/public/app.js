@@ -161,6 +161,29 @@
     return `<figure><figcaption>${esc(caption)}</figcaption>${body}</figure>`;
   }
 
+  // Sopra la baseline si può mettere lo scatto o il diff: vederlo scorrere sul
+  // riferimento dice subito se il magenta copre una regressione o un dettaglio.
+  // È una scelta sola per tutta la modale e sopravvive al cambio di pagina.
+  const scrubDiff = document.getElementById('scrub-diff');
+  let scrubOverlayDiff = false;
+
+  // Applicata sui pannelli già in pagina invece di ridisegnare, altrimenti i
+  // cursori tornerebbero tutti a metà a ogni spunta.
+  function applyScrubOverlay() {
+    resultBody.querySelectorAll('.scrub').forEach((s) => {
+      const img = s.querySelector('.scrub-top img');
+      const useDiff = scrubOverlayDiff && Boolean(img.dataset.diffSrc);
+      img.src = useDiff ? img.dataset.diffSrc : img.dataset.testSrc;
+      img.alt = useDiff ? 'Differenze' : 'Ultimo test';
+      s.querySelector('.scrub-tag-right').textContent = useDiff ? 'differenze' : 'ultimo test';
+    });
+  }
+
+  scrubDiff.addEventListener('change', () => {
+    scrubOverlayDiff = scrubDiff.checked;
+    applyScrubOverlay();
+  });
+
   // Confronto sovrapposto: baseline e ultimo test impilati, con un cursore da
   // trascinare che scopre l'uno o l'altro (lo scrubber del report BackstopJS).
   // Alla larghezza piena della modale gli scatti si leggono davvero, cosa che
@@ -172,19 +195,23 @@
       return '<div class="shot-missing">confronto non disponibile: manca la baseline o lo scatto</div>';
     }
     const diff = entry.images?.diff;
+    // Un viewport passato non ha un diff: lì sopra resta lo scatto, e a dirlo
+    // è l'etichetta del pannello.
+    const useDiff = scrubOverlayDiff && Boolean(diff);
     return `<div class="scrub" data-pos="50">
       <div class="scrub-scroll">
         <div class="scrub-stack">
           <img alt="Baseline" src="${esc(reportAsset(slug, ref))}">
           <div class="scrub-top">
-            <img alt="Ultimo test" src="${esc(reportAsset(slug, test))}"
+            <img alt="${useDiff ? 'Differenze' : 'Ultimo test'}"
+              src="${esc(reportAsset(slug, useDiff ? diff : test))}"
               data-test-src="${esc(reportAsset(slug, test))}"
               data-diff-src="${diff ? esc(reportAsset(slug, diff)) : ''}">
           </div>
         </div>
       </div>
       <span class="scrub-tag scrub-tag-left">baseline</span>
-      <span class="scrub-tag scrub-tag-right">ultimo test</span>
+      <span class="scrub-tag scrub-tag-right">${useDiff ? 'differenze' : 'ultimo test'}</span>
       <div class="scrub-handle" role="slider" tabindex="0" aria-label="Cursore di confronto"
         aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"></div>
     </div>`;
@@ -249,17 +276,6 @@
     setScrub(scrub, next);
     ev.preventDefault();
     ev.stopPropagation();
-  });
-
-  // Sopra la baseline si può mettere lo scatto o il diff: vederlo scorrere sul
-  // riferimento dice subito se il magenta copre una regressione o un dettaglio.
-  resultBody.addEventListener('change', (ev) => {
-    const pick = ev.target.closest('[data-scrub-diff]');
-    if (!pick) return;
-    const section = pick.closest('.vp-result');
-    const img = section.querySelector('.scrub-top img');
-    img.src = pick.checked ? img.dataset.diffSrc : img.dataset.testSrc;
-    section.querySelector('.scrub-tag-right').textContent = pick.checked ? 'differenze' : 'ultimo test';
   });
 
   // Dalla modale si scorrono le pagine dell'ultimo test senza tornare alla
@@ -328,6 +344,12 @@
       btn.setAttribute('aria-pressed', String(btn.dataset.view === shotView));
     });
 
+    // La spunta resta com'era: si disabilita solo dove non c'è alcun diff da
+    // mostrare (pagina tutta verde), senza perdere la scelta fatta.
+    document.getElementById('scrub-diff-wrap').hidden = shotView !== 'scrub';
+    scrubDiff.checked = scrubOverlayDiff;
+    scrubDiff.disabled = !entries.some((e) => e.images?.diff);
+
     resultBody.innerHTML = ordered.map((e) => `
       <section class="vp-result">
         <div class="vp-result-head">
@@ -335,10 +357,6 @@
           ${e.status === 'fail'
             ? `<span class="badge badge-sm badge-fail">${esc(e.misMatchPercentage ?? '?')}% diverso</span>`
             : '<span class="badge badge-sm badge-pass">nessuna differenza</span>'}
-          ${shotView === 'scrub' ? `<label class="scrub-pick">
-            <input type="checkbox" data-scrub-diff ${e.images?.diff ? '' : 'disabled'}>
-            sovrapponi il diff
-          </label>` : ''}
         </div>
         ${shotView === 'scrub' ? scrubPane(slug, e) : `<div class="shots">
           ${shotFigure('Baseline', slug, e.images?.reference, 'baseline non disponibile')}

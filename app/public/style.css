@@ -803,11 +803,12 @@ table.scenarios-table td.truncate {
 .scrub-tag-left { left: 10px; }
 .scrub-tag-right { right: 10px; }
 
+/* Vive nell'intestazione della modale, accanto al selettore di vista: la
+   scelta vale per tutti i viewport e resta mentre si scorrono le pagine. */
 .scrub-pick {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  margin-left: auto;
   font-family: var(--sans);
   font-size: 0.72rem;
   text-transform: none;
