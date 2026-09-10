@@ -252,3 +252,111 @@ test('backstop.json di sola lettura: la migrazione non impedisce di aprirlo', ()
   const cfg = getProject(dir, 'readonly'); // non deve lanciare EACCES
   assert.strictEqual(cfg.stealth, true);
 });
+
+// --- progetti copiati a mano (cartella duplicata sul filesystem) ---
+
+// Crea un progetto "copia" duplicando la cartella di "origine": è quello che
+// fa un copia-incolla da file manager, backstop.json compreso.
+function copyProjectDir(dir, from, to) {
+  fs.cpSync(path.join(dir, 'projects', from), path.join(dir, 'projects', to), { recursive: true });
+}
+
+function writeBitmap(dir, slug, sub, name) {
+  const full = path.join(dir, 'projects', slug, 'backstop_data', sub);
+  fs.mkdirSync(full, { recursive: true });
+  fs.writeFileSync(path.join(full, name), 'png');
+}
+
+test('progetto copiato a mano: id e paths riallineati allo slug in lettura', () => {
+  const dir = tempDataDir();
+  createProject(dir, 'origine');
+  copyProjectDir(dir, 'origine', 'copia');
+
+  const cfg = getProject(dir, 'copia');
+  assert.strictEqual(cfg.id, 'copia');
+  assert.deepStrictEqual(cfg.paths, canonicalPaths('copia'));
+
+  // riscritto su disco: è il file che legge BackstopJS durante un run, ed è
+  // da lì che dipende la cartella in cui finiscono report e screenshot
+  const onDisk = JSON.parse(
+    fs.readFileSync(path.join(dir, 'projects', 'copia', 'backstop.json'), 'utf8')
+  );
+  assert.strictEqual(onDisk.id, 'copia');
+  assert.deepStrictEqual(onDisk.paths, canonicalPaths('copia'));
+});
+
+test('progetto copiato a mano: i bitmap seguono il nuovo id', () => {
+  const dir = tempDataDir();
+  createProject(dir, 'origine');
+  writeBitmap(dir, 'origine', 'bitmaps_reference', 'origine_Home_0_document_0_desktop.png');
+  writeBitmap(dir, 'origine', 'bitmaps_test/20250101-101010', 'origine_Home_0_document_0_desktop.png');
+  copyProjectDir(dir, 'origine', 'copia');
+
+  getProject(dir, 'copia');
+
+  const base = path.join(dir, 'projects', 'copia', 'backstop_data');
+  // BackstopJS nomina i bitmap `${id}_...`: senza rinomina la baseline
+  // copiata resterebbe orfana e ogni scenario risulterebbe senza riferimento
+  assert.deepStrictEqual(fs.readdirSync(path.join(base, 'bitmaps_reference')), [
+    'copia_Home_0_document_0_desktop.png',
+  ]);
+  assert.deepStrictEqual(fs.readdirSync(path.join(base, 'bitmaps_test', '20250101-101010')), [
+    'copia_Home_0_document_0_desktop.png',
+  ]);
+  // l'originale non viene toccato
+  assert.deepStrictEqual(
+    fs.readdirSync(path.join(dir, 'projects', 'origine', 'backstop_data', 'bitmaps_reference')),
+    ['origine_Home_0_document_0_desktop.png']
+  );
+});
+
+test('progetto copiato a mano: il report ereditato viene rimosso', () => {
+  const dir = tempDataDir();
+  createProject(dir, 'origine');
+  writeBitmap(dir, 'origine', 'html_report', 'config.js');
+  copyProjectDir(dir, 'origine', 'copia');
+
+  getProject(dir, 'copia');
+
+  // descriveva bitmap con i nomi vecchi: dopo la rinomina non è più leggibile
+  assert.strictEqual(
+    fs.existsSync(path.join(dir, 'projects', 'copia', 'backstop_data', 'html_report')),
+    false
+  );
+});
+
+test('progetto già allineato: la lettura non tocca niente su disco', () => {
+  const dir = tempDataDir();
+  createProject(dir, 'stabile');
+  writeBitmap(dir, 'stabile', 'bitmaps_reference', 'stabile_Home_0_document_0_desktop.png');
+  writeBitmap(dir, 'stabile', 'html_report', 'config.js');
+  const file = path.join(dir, 'projects', 'stabile', 'backstop.json');
+  const before = fs.statSync(file).mtimeMs;
+
+  getProject(dir, 'stabile');
+
+  assert.strictEqual(fs.statSync(file).mtimeMs, before);
+  assert.strictEqual(
+    fs.existsSync(path.join(dir, 'projects', 'stabile', 'backstop_data', 'html_report', 'config.js')),
+    true
+  );
+});
+
+test('copia con backstop.json di sola lettura: bitmap non rinominati', () => {
+  const dir = tempDataDir();
+  createProject(dir, 'origine');
+  writeBitmap(dir, 'origine', 'bitmaps_reference', 'origine_Home_0_document_0_desktop.png');
+  copyProjectDir(dir, 'origine', 'copia');
+  const file = path.join(dir, 'projects', 'copia', 'backstop.json');
+  fs.chmodSync(file, 0o444);
+
+  const cfg = getProject(dir, 'copia'); // non deve lanciare EACCES
+  assert.strictEqual(cfg.id, 'copia');
+
+  // La config su disco è rimasta con l'id vecchio: rinominare i bitmap qui
+  // lascerebbe la baseline orfana rispetto al file che legge BackstopJS.
+  assert.deepStrictEqual(
+    fs.readdirSync(path.join(dir, 'projects', 'copia', 'backstop_data', 'bitmaps_reference')),
+    ['origine_Home_0_document_0_desktop.png']
+  );
+});

@@ -115,7 +115,8 @@ function readConfig(dataDir, slug) {
   if (!fs.existsSync(file)) {
     throw httpError(404, `Progetto "${slug}" non trovato`);
   }
-  return migrateConfig(dataDir, slug, JSON.parse(fs.readFileSync(file, 'utf8')));
+  const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+  return normalizeIdentity(dataDir, slug, migrateConfig(dataDir, slug, config));
 }
 
 // I progetti creati prima della modalità discreta non hanno il campo
@@ -142,6 +143,76 @@ function migrateConfig(dataDir, slug, config) {
 
 function writeConfig(dataDir, slug, config) {
   fs.writeFileSync(configPath(dataDir, slug), JSON.stringify(config, null, 2) + '\n');
+}
+
+function pathsAligned(config, slug) {
+  const expected = canonicalPaths(slug);
+  const actual = config.paths;
+  if (!actual || typeof actual !== 'object') return false;
+  return Object.keys(expected).every((key) => actual[key] === expected[key]);
+}
+
+// Rinomina i bitmap ereditati dal progetto di partenza. BackstopJS li nomina
+// `${id}_...`: cambiato l'id, la baseline copiata resterebbe orfana e ogni
+// scenario risulterebbe senza riferimento. Il report HTML indicizza gli stessi
+// nomi vecchi e non è recuperabile allo stesso modo: lo rimuoviamo, lo riscrive
+// il prossimo test.
+function renameBitmapPrefix(dataDir, slug, previousId) {
+  const base = path.join(projectDir(dataDir, slug), 'backstop_data');
+
+  const renameDir = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith(`${previousId}_`)) continue;
+      const renamed = `${slug}_${name.slice(previousId.length + 1)}`;
+      try {
+        fs.renameSync(path.join(dir, name), path.join(dir, renamed));
+      } catch {
+        // un singolo file non rinominabile non deve impedire di aprire il progetto
+      }
+    }
+  };
+
+  renameDir(path.join(base, 'bitmaps_reference'));
+
+  const testRoot = path.join(base, 'bitmaps_test');
+  if (fs.existsSync(testRoot)) {
+    for (const entry of fs.readdirSync(testRoot, { withFileTypes: true })) {
+      if (entry.isDirectory()) renameDir(path.join(testRoot, entry.name));
+    }
+  }
+
+  fs.rmSync(path.join(base, 'html_report'), { recursive: true, force: true });
+}
+
+// Un progetto copiato a mano (cartella duplicata dal file manager) si porta
+// dietro "id" e "paths" del progetto di partenza. I "paths" sono il danno
+// grosso: BackstopJS obbedisce a quelli, non alla cartella da cui arriva la
+// config, e scrive baseline, screenshot e report dentro il progetto originale —
+// dove la UI non li cerca mai, perché li cerca sotto lo slug della cartella. Il
+// risultato è un run che riesce senza che compaia alcun report.
+//
+// Riallineiamo entrambi i campi in lettura, come già fa validateConfig al
+// salvataggio, così la correzione non dipende dal ricordarsi di risalvare.
+function normalizeIdentity(dataDir, slug, config) {
+  const previousId = config.id;
+  if (previousId === slug && pathsAligned(config, slug)) return config;
+
+  config.id = slug;
+  config.paths = canonicalPaths(slug);
+  try {
+    writeConfig(dataDir, slug, config);
+  } catch {
+    // Sola lettura: teniamo la correzione solo in memoria e non tocchiamo i
+    // file. Rinominare i bitmap qui li scollegherebbe dall'id che BackstopJS
+    // continua a leggere dal backstop.json su disco.
+    return config;
+  }
+
+  if (typeof previousId === 'string' && previousId !== '' && previousId !== slug) {
+    renameBitmapPrefix(dataDir, slug, previousId);
+  }
+  return config;
 }
 
 function listProjects(dataDir) {
