@@ -87,6 +87,28 @@ test('crawl: URL di partenza irraggiungibile (rete) solleva un errore chiaro', a
   );
 });
 
+test('crawl: l\'errore riporta la causa reale, non solo "fetch failed"', async () => {
+  const realFetch = global.fetch;
+  global.fetch = async () => {
+    const cause = new Error('unable to verify the first certificate');
+    cause.code = 'UNABLE_TO_VERIFY_LEAF_SIGNATURE';
+    throw new TypeError('fetch failed', { cause });
+  };
+  try {
+    await assert.rejects(
+      () => crawl('https://intranet.example/'),
+      (err) => {
+        assert.strictEqual(err.status, 502);
+        assert.match(err.message, /fetch failed/);
+        assert.match(err.message, /UNABLE_TO_VERIFY_LEAF_SIGNATURE/);
+        return true;
+      },
+    );
+  } finally {
+    global.fetch = realFetch;
+  }
+});
+
 test('crawl: se "localhost" non risponde, ritenta trasparentemente su host.docker.internal', async () => {
   const realFetch = global.fetch;
   const calls = [];

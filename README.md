@@ -100,6 +100,12 @@ Se una pagina usa `localhost`/`127.0.0.1` e non è raggiungibile dal
 container, l'avvio di baseline/test lo segnala e propone di sostituirlo con
 `host.docker.internal` in tutte le URL del progetto.
 
+Siti intranet con certificato firmato da una CA aziendale: il container usa
+le CA di sistema dell'host (`/etc/ssl/certs/ca-certificates.crt`), quindi
+basta che la CA sia installata lì (`/usr/local/share/ca-certificates/` +
+`sudo update-ca-certificates`) e poi `./up.sh`. Senza, la scansione delle
+pagine fallisce con `UNABLE_TO_VERIFY_LEAF_SIGNATURE`.
+
 ## Dati, baseline e condivisione col team
 
 `data/` è la fonte di verità, **nel formato standard di BackstopJS**: ogni

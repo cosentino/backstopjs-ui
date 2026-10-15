@@ -6,10 +6,16 @@ services:
       - "3000:3000"
     volumes:
       - ./data:/data
+      # CA di sistema dell'host: include le CA aziendali/intranet installate
+      # in /usr/local/share/ca-certificates, che il container non conosce.
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/host-ca-certificates.crt:ro
     # Utente host (esportato da up.sh): i file generati non appartengono a root.
     user: "${VRT_UID:-1000}:${VRT_GID:-1000}"
     environment:
       HOME: /tmp
+      # Il crawler (fetch di Node) si fida anche delle CA dell'host. Gli
+      # screenshot no: BackstopJS avvia già Chromium con ignoreHTTPSErrors.
+      NODE_EXTRA_CA_CERTS: /etc/ssl/host-ca-certificates.crt
     shm_size: 1gb
     # Per testare dev server sull'host: http://host.docker.internal:<porta>
     extra_hosts:

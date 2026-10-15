@@ -64,6 +64,17 @@ async function fetchHtmlWithLocalFallback(url, fetchTimeoutMs, stealth) {
   }
 }
 
+// Il fetch di Node (undici) lancia sempre un generico "fetch failed" e mette
+// il motivo vero (DNS, connessione rifiutata, certificato non riconosciuto…)
+// in err.cause: senza, l'utente non ha modo di capire cosa non va.
+function describeFetchError(err) {
+  const message = err.message || String(err);
+  const cause = err.cause;
+  if (!cause) return message;
+  const detail = [cause.code, cause.message].filter(Boolean).join(' - ');
+  return detail ? `${message} (${detail})` : message;
+}
+
 // BFS same-origin a partire da startUrl. Gli errori delle singole pagine
 // (timeout, 404, content-type non HTML) non interrompono il crawl.
 async function crawl(
@@ -95,7 +106,7 @@ async function crawl(
       // capita ad es. quando il target gira su un host/container non
       // raggiungibile da chi esegue il crawler.
       if (depth === 0) {
-        const wrapped = new Error(`Impossibile raggiungere "${url}": ${err.message || err}`);
+        const wrapped = new Error(`Impossibile raggiungere "${url}": ${describeFetchError(err)}`);
         wrapped.status = 502;
         throw wrapped;
       }
